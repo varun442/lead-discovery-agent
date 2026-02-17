@@ -43,3 +43,7 @@ Environment variable:
 - Keep API keys only on backend.
 - Rotate keys if exposed.
 - Restrict `FRONTEND_ORIGINS` to trusted frontend domains.
+
+## 5) GitHub merge safety (recommended)
+Enable branch protection on `main` so CI must pass before merge:
+- `/Users/varunsavai/Documents/New project/docs/github-branch-protection.md`

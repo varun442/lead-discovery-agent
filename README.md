@@ -94,9 +94,33 @@ Example markdown format:
 - Rotate API keys if exposed.
 - Keep LLM keys server-side only.
 
+## CI: Automated Tests on Push
+
+GitHub Actions workflow file:
+- `/Users/varunsavai/Documents/New project/.github/workflows/tests.yml`
+
+It runs automatically on:
+- every `push`
+- every `pull_request`
+- manual trigger from Actions tab (`workflow_dispatch`)
+
+Jobs:
+1. Backend: installs Python deps from `lead_agent/requirements.txt` and runs `pytest -q`
+2. Frontend: installs Node deps from `lead_agent_ui/package-lock.json` and runs `npm run test:run`
+
+## Branch Protection (Block Merge Unless Tests Pass)
+
+Follow:
+- `/Users/varunsavai/Documents/New project/docs/github-branch-protection.md`
+
+This protects `main` by requiring pull requests and passing checks:
+- `Backend (pytest)`
+- `Frontend (vitest)`
+
 ## Documentation
 
 - Deployment: `/Users/varunsavai/Documents/New project/DEPLOYMENT.md`
 - Backend details: `/Users/varunsavai/Documents/New project/lead_agent/README.md`
 - Frontend details: `/Users/varunsavai/Documents/New project/lead_agent_ui/README.md`
 - Review standards: `/Users/varunsavai/Documents/New project/docs/review-guidelines.md`
+- GitHub branch protection: `/Users/varunsavai/Documents/New project/docs/github-branch-protection.md`
