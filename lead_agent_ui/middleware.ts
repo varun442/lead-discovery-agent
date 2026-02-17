@@ -34,10 +34,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
+  const isPublicLanding = path === "/";
   const isAuthPage = path === "/sign-in";
   const isAuthCallback = path === "/auth/callback";
+  const isPublicRoute = isPublicLanding || isAuthPage || isAuthCallback;
 
-  if (!user && !isAuthPage && !isAuthCallback) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     return NextResponse.redirect(url);
@@ -45,7 +47,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

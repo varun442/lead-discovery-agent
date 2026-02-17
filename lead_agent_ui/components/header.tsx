@@ -99,12 +99,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6">
-        <div className="flex items-center gap-3">
+        <Link href="/dashboard" className="flex items-center gap-3">
           <span className="rounded-lg border border-border bg-card p-2 text-accent">
             <Radar className="h-4 w-4" />
           </span>
           <p className="text-sm font-semibold tracking-wide text-foreground">Lead Discovery Agent</p>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs text-muted">

@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
-  let response = NextResponse.redirect(new URL("/", request.url));
+  let response = NextResponse.redirect(new URL("/dashboard", request.url));
 
   if (!code) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
