@@ -42,6 +42,13 @@ npm run dev:hmr
 
 Open: [http://localhost:3000](http://localhost:3000)
 
+## Run Unit Tests
+```bash
+cd "/Users/varunsavai/Documents/New project/lead_agent_ui"
+npm install
+npm run test:run
+```
+
 ## Environment
 Set `/Users/varunsavai/Documents/New project/lead_agent_ui/.env.local`:
 ```env

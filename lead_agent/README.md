@@ -57,6 +57,13 @@ source .venv/bin/activate
 uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+## Run Unit Tests
+```bash
+cd "/Users/varunsavai/Documents/New project/lead_agent"
+source .venv/bin/activate
+pytest -q
+```
+
 ## API Endpoints
 - `GET /health`
 - `POST /api/leads`
