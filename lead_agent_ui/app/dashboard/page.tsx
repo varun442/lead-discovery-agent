@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { ToastStack, type ToastItem, type ToastKind } from "@/components/ui/toast-stack";
 import { extractSearchDomain, normalizeHistoryPayload, type CompanySearchHistoryInput } from "@/lib/company-search-history";
 import { streamLeads } from "@/lib/api";
+import { isJobContextComplete } from "@/lib/job-context";
 import { classifyRole, filterContacts, type RoleFilter } from "@/lib/lead-utils";
 import {
   mapDraftFailure,
@@ -510,9 +511,10 @@ export default function HomePage() {
     }
 
     const job = jobOverride || activeJob;
-    if (!job) {
+    if (!isJobContextComplete(job)) {
       setPendingContact(contact);
       setIsJobDrawerOpen(true);
+      setLastDraftError("Complete job title, company, job URL, and full job description before sending.");
       log(`Set a job description before sending to ${contact.name}`);
       return;
     }
@@ -606,7 +608,7 @@ export default function HomePage() {
       id: crypto.randomUUID(),
       title: draft.title,
       company: draft.company,
-      source_url: draft.source_url || undefined,
+      source_url: draft.source_url,
       text: draft.text,
       updated_at: new Date().toISOString()
     };

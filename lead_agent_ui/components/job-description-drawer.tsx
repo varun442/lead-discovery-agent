@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Clock3, Link as LinkIcon, Save, X } from "lucide-react";
 
+import { validateJobContextDraft } from "@/lib/job-context";
 import type { JobDescriptionContext } from "@/lib/types";
 
 interface JobDescriptionDraft {
@@ -57,16 +58,12 @@ export function JobDescriptionDrawer({
 
   const submit = () => {
     setError(null);
-    if (!draft.text.trim() || draft.text.trim().length < 40) {
-      setError("Paste a fuller job description (at least 40 characters).");
+    const validated = validateJobContextDraft(draft);
+    if (!validated.ok) {
+      setError(validated.error);
       return;
     }
-    onSave({
-      title: draft.title.trim(),
-      company: draft.company.trim(),
-      source_url: draft.source_url.trim(),
-      text: draft.text.trim()
-    });
+    onSave(validated.value);
   };
 
   return (
@@ -86,13 +83,15 @@ export function JobDescriptionDrawer({
           <input
             value={draft.title}
             onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-            placeholder="Job title (e.g., Senior Backend Engineer)"
+            placeholder="Job title (required)"
+            required
             className="w-full rounded-xl border border-border bg-black/40 px-3 py-2 text-sm text-foreground placeholder:text-muted"
           />
           <input
             value={draft.company}
             onChange={(event) => setDraft((prev) => ({ ...prev, company: event.target.value }))}
-            placeholder="Company for this role"
+            placeholder="Company for this role (required)"
+            required
             className="w-full rounded-xl border border-border bg-black/40 px-3 py-2 text-sm text-foreground placeholder:text-muted"
           />
           <div className="relative">
@@ -100,7 +99,8 @@ export function JobDescriptionDrawer({
             <input
               value={draft.source_url}
               onChange={(event) => setDraft((prev) => ({ ...prev, source_url: event.target.value }))}
-              placeholder="Job URL (optional)"
+              placeholder="Job URL (required, include https://)"
+              required
               className="w-full rounded-xl border border-border bg-black/40 py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted"
             />
           </div>
@@ -108,6 +108,7 @@ export function JobDescriptionDrawer({
             value={draft.text}
             onChange={(event) => setDraft((prev) => ({ ...prev, text: event.target.value }))}
             placeholder="Paste full job description here..."
+            required
             className="min-h-[220px] w-full rounded-xl border border-border bg-black/40 px-3 py-2 text-sm text-foreground placeholder:text-muted"
           />
           {error ? <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p> : null}
