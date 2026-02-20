@@ -106,8 +106,47 @@ def _extract_domain_root(domain: str) -> str:
 def _phrase_in_text(phrase: str, text: str) -> bool:
     if not phrase:
         return False
-    pattern = r"\b" + re.escape(phrase) + r"\b"
-    return re.search(pattern, text) is not None
+    pattern = re.compile(r"\b" + re.escape(phrase) + r"\b")
+    for match in pattern.finditer(text):
+        # Ignore explicitly negated mentions (e.g., "not greenhouse software").
+        prefix = text[max(0, match.start() - 64) : match.start()]
+        if re.search(r"\b(not|no|without|except)\s+(?:\w+\s+){0,3}$", prefix):
+            continue
+        return True
+    return False
+
+
+def _alias_variants(alias: str) -> set[str]:
+    normalized = _normalize_text(alias)
+    if not normalized:
+        return set()
+
+    variants = {normalized}
+    compact = normalized.replace(" ", "")
+
+    # Handle compact brand strings such as "juullabs" -> "juul labs".
+    suffixes = [
+        "labs",
+        "lab",
+        "tech",
+        "technology",
+        "technologies",
+        "systems",
+        "software",
+        "solutions",
+        "group",
+        "inc",
+        "llc",
+        "corp",
+        "corporation",
+    ]
+    for suffix in suffixes:
+        if compact.endswith(suffix) and len(compact) > len(suffix):
+            head = compact[: -len(suffix)].strip()
+            if len(head) >= 3:
+                variants.add(f"{head} {suffix}".strip())
+
+    return {value for value in variants if value}
 
 
 def _company_match_score(
@@ -130,18 +169,21 @@ def _company_match_score(
     company_phrase = _normalize_text(company_name)
     domain_root = _extract_domain_root(domain)
 
-    strong_aliases = [alias for alias in [slug, company_phrase, domain_root] if alias]
+    strong_aliases = list(dict.fromkeys(alias for alias in [slug, company_phrase, domain_root] if alias))
 
     for alias in strong_aliases:
-        alias_tokens = alias.split()
-        if len(alias_tokens) >= 2 and _phrase_in_text(alias, text):
-            # Multi-word company alias match is a strong signal.
-            score += 3
-        elif len(alias_tokens) == 1:
-            # Single-token company names are noisy (e.g., "Greenhouse").
-            # Require an employment cue such as "at greenhouse".
-            if re.search(rf"\b(at|@|from)\s+{re.escape(alias)}\b", text):
-                score += 2
+        best_alias_score = 0
+        for variant in _alias_variants(alias):
+            alias_tokens = variant.split()
+            if len(alias_tokens) >= 2 and _phrase_in_text(variant, text):
+                # Multi-word company alias match is a strong signal.
+                best_alias_score = max(best_alias_score, 3)
+            elif len(alias_tokens) == 1:
+                # Single-token company names are noisy (e.g., "Greenhouse").
+                # Require an employment cue such as "at greenhouse".
+                if re.search(rf"\b(at|@|from)\s+{re.escape(variant)}\b", text):
+                    best_alias_score = max(best_alias_score, 2)
+        score += best_alias_score
 
     return score
 

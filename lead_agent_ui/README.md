@@ -65,9 +65,11 @@ Run in this order in Supabase SQL Editor:
 1. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_outreach_drafts.sql`
 2. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_outreach_base_drafts.sql`
 3. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_credits.sql`
+4. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_company_searches.sql`
 
 ## Frontend Routes
-- `/` lead discovery + outreach workflow
+- `/` landing page
+- `/dashboard` lead discovery + outreach workflow
 - `/sign-in` auth screen
 - `/profile` resume upload/view
 
@@ -78,6 +80,14 @@ Run in this order in Supabase SQL Editor:
   - charges credits
 - `GET /api/outreach/quota`
   - returns credit balance and daily limits/usage
+- `GET /api/company-search-history?limit=15`
+  - returns prior company searches for current user
+- `POST /api/company-search-history`
+  - upserts search history per user + domain
+- `DELETE /api/company-search-history?id=<uuid>`
+  - deletes one history item for current user
+- `DELETE /api/company-search-history?all=true`
+  - clears all history items for current user
 
 ## Backend Dependency
 This UI expects backend API running at `NEXT_PUBLIC_LEAD_API_URL`:

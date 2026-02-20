@@ -58,6 +58,7 @@ Run these scripts in Supabase SQL editor:
 1. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_outreach_drafts.sql`
 2. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_outreach_base_drafts.sql`
 3. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_credits.sql`
+4. `/Users/varunsavai/Documents/New project/lead_agent_ui/docs/supabase_company_searches.sql`
 
 ## Environment Variables (Summary)
 

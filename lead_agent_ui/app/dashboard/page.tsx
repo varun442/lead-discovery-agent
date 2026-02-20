@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { History } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import { ActionBar } from "@/components/action-bar";
@@ -14,11 +15,13 @@ import { JobDescriptionDrawer } from "@/components/job-description-drawer";
 import { LeadFilters } from "@/components/lead-filters";
 import { LeadList } from "@/components/lead-list";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { PreviousCompanySearchesDrawer } from "@/components/previous-company-searches-drawer";
 import { Card } from "@/components/ui/card";
+import { normalizeHistoryPayload, type CompanySearchHistoryInput } from "@/lib/company-search-history";
 import { streamLeads } from "@/lib/api";
 import { filterContacts, type ConfidenceFilter, type RoleFilter } from "@/lib/lead-utils";
 import { createClient } from "@/lib/supabase/client";
-import type { Contact, JobDescriptionContext, LeadResponse } from "@/lib/types";
+import type { CompanySearchHistoryItem, Contact, JobDescriptionContext, LeadResponse } from "@/lib/types";
 
 const ACTIVE_JD_KEY_PREFIX = "lead_agent_active_jd";
 const RECENT_JD_KEY_PREFIX = "lead_agent_recent_jds";
@@ -83,6 +86,12 @@ export default function HomePage() {
   } | null>(null);
   const [activeSendKey, setActiveSendKey] = useState<string | null>(null);
   const [unlockedEmails, setUnlockedEmails] = useState<Record<string, true>>({});
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState<CompanySearchHistoryItem[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyDeleteId, setHistoryDeleteId] = useState<string | null>(null);
+  const [isHistoryClearing, setIsHistoryClearing] = useState(false);
 
   const homeStateKey = authUserId ? `${HOME_STATE_KEY_PREFIX}:${authUserId}` : null;
   const activeJdKey = authUserId ? `${ACTIVE_JD_KEY_PREFIX}:${authUserId}` : null;
@@ -96,6 +105,93 @@ export default function HomePage() {
 
   const log = (message: string) => {
     setActivityMessages((prev) => [...prev, `${nowTime()} ${message}`]);
+  };
+
+  const fetchSearchHistory = useCallback(async () => {
+    if (!authUserId) {
+      setHistoryItems([]);
+      setHistoryError(null);
+      return;
+    }
+
+    setIsHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await fetch("/api/company-search-history?limit=15", { cache: "no-store" });
+      const payload = (await response.json()) as { error?: string; items?: CompanySearchHistoryItem[] };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load previous searches.");
+      }
+      setHistoryItems(Array.isArray(payload.items) ? payload.items : []);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Failed to load previous searches.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }, [authUserId]);
+
+  const saveSearchHistory = async (input: CompanySearchHistoryInput) => {
+    if (!authUserId) return;
+
+    try {
+      const normalized = normalizeHistoryPayload(input);
+      if (!normalized.website_url || !normalized.search_domain) return;
+
+      const response = await fetch("/api/company-search-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(normalized)
+      });
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error || "Failed to save previous search.");
+      }
+      await fetchSearchHistory();
+    } catch (error) {
+      log(`History save failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const onLoadHistoryItem = (item: CompanySearchHistoryItem) => {
+    setWebsite(item.website_url);
+    setLinkedin(item.linkedin_url || "");
+    setAutoDetectLinkedin(false);
+    setIsHistoryDrawerOpen(false);
+    log(`Loaded previous search: ${item.company_name || item.search_domain}`);
+  };
+
+  const onDeleteHistoryItem = async (id: string) => {
+    setHistoryDeleteId(id);
+    setHistoryError(null);
+    try {
+      const response = await fetch(`/api/company-search-history?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to delete search history item.");
+      }
+      await fetchSearchHistory();
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Failed to delete search history item.");
+    } finally {
+      setHistoryDeleteId(null);
+    }
+  };
+
+  const onClearSearchHistory = async () => {
+    setIsHistoryClearing(true);
+    setHistoryError(null);
+    try {
+      const response = await fetch("/api/company-search-history?all=true", { method: "DELETE" });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to clear search history.");
+      }
+      await fetchSearchHistory();
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Failed to clear search history.");
+    } finally {
+      setIsHistoryClearing(false);
+    }
   };
 
   useEffect(() => {
@@ -118,6 +214,16 @@ export default function HomePage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!authResolved) return;
+    if (!authUserId) {
+      setHistoryItems([]);
+      setHistoryError(null);
+      return;
+    }
+    void fetchSearchHistory();
+  }, [authResolved, authUserId, fetchSearchHistory]);
 
   useEffect(() => {
     if (!authResolved) return;
@@ -328,7 +434,8 @@ export default function HomePage() {
 
   const onSubmit = async () => {
     let hadError = false;
-    const finalLinkedin = autoDetectLinkedin ? guessLinkedinFromWebsite(website.trim()) || linkedin.trim() : linkedin.trim();
+    const submittedWebsite = website.trim();
+    const finalLinkedin = autoDetectLinkedin ? guessLinkedinFromWebsite(submittedWebsite) || linkedin.trim() : linkedin.trim();
 
     setIsLoading(true);
     setResult(null);
@@ -342,7 +449,7 @@ export default function HomePage() {
     log("Agent started");
 
     try {
-      const data = await streamLeads(website.trim(), finalLinkedin, {
+      const data = await streamLeads(submittedWebsite, finalLinkedin, {
         onProgress: (message) => log(message),
         onError: (message) => log(message)
       });
@@ -359,11 +466,29 @@ export default function HomePage() {
       if (data.warning) {
         log(data.warning);
       }
+
+      await saveSearchHistory({
+        website_url: submittedWebsite,
+        linkedin_url: finalLinkedin || null,
+        company_name: data.company || null,
+        contacts_count: data.contacts.length || 0,
+        status: data.error ? "error" : "success",
+        error_message: data.error || null
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch leads";
       hadError = true;
       setRequestError(message);
       log(message);
+
+      await saveSearchHistory({
+        website_url: submittedWebsite,
+        linkedin_url: finalLinkedin || null,
+        company_name: null,
+        contacts_count: 0,
+        status: "error",
+        error_message: message
+      });
     } finally {
       setIsLoading(false);
       log(hadError ? "Agent finished with errors" : "Agent finished");
@@ -396,6 +521,19 @@ export default function HomePage() {
                   onAutoDetectChange={setAutoDetectLinkedin}
                   onSubmit={onSubmit}
                 />
+                <Card className="rounded-2xl p-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsHistoryDrawerOpen(true)}
+                    className="flex w-full items-center justify-between rounded-xl border border-border bg-black/30 px-3 py-2 text-sm text-muted transition hover:text-foreground"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      Previous searches
+                    </span>
+                    <span className="rounded-full border border-border px-2 py-0.5 text-xs">{historyItems.length}</span>
+                  </button>
+                </Card>
                 <AgentProgressTimeline
                   messages={activityMessages.map((m) => m.toLowerCase())}
                   isRunning={isLoading}
@@ -495,6 +633,19 @@ export default function HomePage() {
         }}
         onSave={onSaveJob}
         onUseRecent={onUseRecentJob}
+      />
+
+      <PreviousCompanySearchesDrawer
+        open={isHistoryDrawerOpen}
+        items={historyItems}
+        isLoading={isHistoryLoading}
+        error={historyError}
+        deletingId={historyDeleteId}
+        isClearing={isHistoryClearing}
+        onClose={() => setIsHistoryDrawerOpen(false)}
+        onLoad={onLoadHistoryItem}
+        onDelete={onDeleteHistoryItem}
+        onClearAll={onClearSearchHistory}
       />
 
       {pendingSendDraft ? (

@@ -72,6 +72,30 @@ def test_find_linkedin_people_raises_when_all_queries_fail(monkeypatch: pytest.M
         utils.find_linkedin_people("Stripe", ["software"], domain="stripe.com")
 
 
+def test_company_match_score_handles_compound_alias_variants() -> None:
+    score = utils._company_match_score(  # noqa: SLF001
+        title="Siddhant Sethi - Software Engineering @ Juul Labs",
+        snippet="Experience: Juul Labs",
+        company_name="Juullabs",
+        keywords=["software", "engineer", "developer", "engineering"],
+        linkedin_company_url="https://www.linkedin.com/company/juullabs/",
+        domain="juullabs.com",
+    )
+    assert score >= 2
+
+
+def test_company_match_score_stays_strict_for_single_token_noise() -> None:
+    score = utils._company_match_score(  # noqa: SLF001
+        title="Greenhouse Manager at Gully Greenhouse",
+        snippet="Operations manager at Gully Greenhouse, not Greenhouse Software.",
+        company_name="Greenhouse",
+        keywords=["manager", "hiring", "talent"],
+        linkedin_company_url="https://www.linkedin.com/company/greenhouse-software/",
+        domain="greenhouse.io",
+    )
+    assert score == 1
+
+
 def test_hunter_domain_search_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HUNTER_API_KEY", raising=False)
     with pytest.raises(ValueError, match="Missing HUNTER_API_KEY"):

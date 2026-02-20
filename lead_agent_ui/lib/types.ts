@@ -29,3 +29,20 @@ export interface JobDescriptionContext {
   source_url?: string;
   updated_at: string;
 }
+
+export type CompanySearchStatus = "success" | "error";
+
+export interface CompanySearchHistoryItem {
+  id: string;
+  user_id: string;
+  search_domain: string;
+  website_url: string;
+  linkedin_url: string | null;
+  company_name: string | null;
+  contacts_count: number;
+  status: CompanySearchStatus;
+  error_message: string | null;
+  last_searched_at: string;
+  created_at: string;
+  updated_at: string;
+}
