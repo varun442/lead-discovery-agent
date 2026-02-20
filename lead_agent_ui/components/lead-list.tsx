@@ -2,6 +2,7 @@ import { Briefcase, Code2, Users } from "lucide-react";
 
 import { LeadCard } from "@/components/lead-card";
 import { roleDisplay, type RoleFilter } from "@/lib/lead-utils";
+import type { LeadSendState } from "@/lib/outreach-credit-ui";
 import type { Contact } from "@/lib/types";
 
 interface LeadListProps {
@@ -9,7 +10,7 @@ interface LeadListProps {
   roleFilter: RoleFilter;
   roleCounts: Record<RoleFilter, number>;
   onRoleChange: (value: RoleFilter) => void;
-  sendStates: Record<string, "idle" | "sending" | "sent" | "error">;
+  sendStates: Record<string, LeadSendState>;
   onSendEmail: (contact: Contact) => void;
   activeSendKey: string | null;
   unlockedEmails: Record<string, true>;

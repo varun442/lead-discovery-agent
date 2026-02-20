@@ -4,12 +4,13 @@ import { useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { confidenceDisplay, confidenceLabel } from "@/lib/lead-utils";
+import { getSendButtonLabel, type LeadSendState } from "@/lib/outreach-credit-ui";
 import type { Contact } from "@/lib/types";
 
 interface LeadCardProps {
   contact: Contact;
   index: number;
-  sendState: "idle" | "sending" | "sent" | "error";
+  sendState: LeadSendState;
   onSendEmail: (contact: Contact) => void;
   disableSend: boolean;
   isEmailUnlocked: boolean;
@@ -46,8 +47,7 @@ export function LeadCard({ contact, index, sendState, onSendEmail, disableSend, 
     setTimeout(() => setCopied(false), 1000);
   };
 
-  const sendButtonLabel =
-    sendState === "sending" ? "Sending..." : sendState === "sent" ? "Sent" : sendState === "error" ? "Retry Send" : "Send AI Email";
+  const sendButtonLabel = getSendButtonLabel(sendState);
 
   const displayedEmail = contact.email ? (isEmailUnlocked ? contact.email : maskEmail(contact.email)) : "No email found";
 
@@ -88,10 +88,22 @@ export function LeadCard({ contact, index, sendState, onSendEmail, disableSend, 
             </div>
             <div className="mt-3 flex gap-2 lg:justify-end">
               <button
-                onClick={() => onSendEmail(contact)}
+                onClick={() => {
+                  if (sendState === "out_of_credits") {
+                    window.location.href = "/profile#credits";
+                    return;
+                  }
+                  onSendEmail(contact);
+                }}
                 className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted hover:text-foreground disabled:opacity-60"
                 disabled={!contact.email || sendState === "sending" || disableSend}
-                title={!contact.email ? "No email available for this lead" : "Generate and send personalized email"}
+                title={
+                  !contact.email
+                    ? "No email available for this lead"
+                    : sendState === "out_of_credits"
+                      ? "Out of credits. Open Credits & Plans to continue."
+                      : "Generate and send personalized email"
+                }
               >
                 <SendHorizonal className="h-3.5 w-3.5" /> {sendButtonLabel}
               </button>

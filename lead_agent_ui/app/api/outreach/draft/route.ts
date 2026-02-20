@@ -50,6 +50,26 @@ interface ConsumeCreditsResultRow {
   message: string | null;
 }
 
+type DraftErrorCode = "OUT_OF_CREDITS" | "DAILY_LIMIT_REACHED" | "UNKNOWN";
+
+function buildErrorResponse(
+  requestId: string,
+  status: number,
+  error: string,
+  errorCode: DraftErrorCode = "UNKNOWN",
+  extra: Record<string, unknown> = {}
+) {
+  return NextResponse.json(
+    {
+      error,
+      error_code: errorCode,
+      request_id: requestId,
+      ...extra
+    },
+    { status }
+  );
+}
+
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -59,10 +79,10 @@ export async function POST(request: NextRequest) {
   const dailyLimit = Number.parseInt(process.env.DRAFTS_DAILY_LIMIT || "10", 10);
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.json({ error: "Supabase environment is missing.", request_id: requestId }, { status: 500 });
+    return buildErrorResponse(requestId, 500, "Supabase environment is missing.");
   }
   if (!openAiApiKey) {
-    return NextResponse.json({ error: "OPENAI_API_KEY is missing on server.", request_id: requestId }, { status: 500 });
+    return buildErrorResponse(requestId, 500, "OPENAI_API_KEY is missing on server.");
   }
 
   let response = NextResponse.next();
@@ -86,7 +106,7 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (userError || !user) {
     console.error(`[outreach:draft:${requestId}] unauthorized`, userError?.message);
-    return NextResponse.json({ error: "Unauthorized", request_id: requestId }, { status: 401 });
+    return buildErrorResponse(requestId, 401, "Unauthorized");
   }
 
   const payload = (await request.json()) as DraftRequestPayload;
@@ -96,7 +116,7 @@ export async function POST(request: NextRequest) {
   const forceRegenerate = Boolean(payload.force_regenerate);
 
   if (!contact?.email || !job?.text) {
-    return NextResponse.json({ error: "Missing contact email or job description.", request_id: requestId }, { status: 400 });
+    return buildErrorResponse(requestId, 400, "Missing contact email or job description.");
   }
 
   const { data: profileData } = await supabase
@@ -118,20 +138,17 @@ export async function POST(request: NextRequest) {
 
   if (resumeError) {
     console.error(`[outreach:draft:${requestId}] resume_query_error`, resumeError.message);
-    return NextResponse.json({ error: resumeError.message, request_id: requestId }, { status: 500 });
+    return buildErrorResponse(requestId, 500, resumeError.message);
   }
   if (!resumeData) {
-    return NextResponse.json(
-      { error: "No active resume found. Upload resume in profile first.", request_id: requestId },
-      { status: 400 }
-    );
+    return buildErrorResponse(requestId, 400, "No active resume found. Upload resume in profile first.");
   }
 
   const resume = resumeData as ActiveResumeRow;
   const { data: fileData, error: fileError } = await supabase.storage.from("resumes").download(resume.file_path);
   if (fileError || !fileData) {
     console.error(`[outreach:draft:${requestId}] resume_download_error`, fileError?.message);
-    return NextResponse.json({ error: fileError?.message || "Failed to load resume file.", request_id: requestId }, { status: 500 });
+    return buildErrorResponse(requestId, 500, fileError?.message || "Failed to load resume file.");
   }
 
   const bytes = Buffer.from(await fileData.arrayBuffer());
@@ -158,15 +175,9 @@ export async function POST(request: NextRequest) {
   if (baseTodayCountError) {
     console.error(`[outreach:draft:${requestId}] base_today_count_error`, baseTodayCountError.message);
     if (isMissingRelationError(baseTodayCountError.message)) {
-      return NextResponse.json(
-        {
-          error: "Missing table public.outreach_base_drafts. Run the SQL setup for base drafts first.",
-          request_id: requestId
-        },
-        { status: 500 }
-      );
+      return buildErrorResponse(requestId, 500, "Missing table public.outreach_base_drafts. Run the SQL setup for base drafts first.");
     }
-    return NextResponse.json({ error: baseTodayCountError.message, request_id: requestId }, { status: 500 });
+    return buildErrorResponse(requestId, 500, baseTodayCountError.message);
   }
 
   let usedTodayBase = baseTodayCount || 0;
@@ -184,16 +195,10 @@ export async function POST(request: NextRequest) {
 
   if (baseError && !isMissingRelationError(baseError.message)) {
     console.error(`[outreach:draft:${requestId}] base_draft_query_error`, baseError.message);
-    return NextResponse.json({ error: baseError.message, request_id: requestId }, { status: 500 });
+    return buildErrorResponse(requestId, 500, baseError.message);
   }
   if (baseError && isMissingRelationError(baseError.message)) {
-    return NextResponse.json(
-      {
-        error: "Missing table public.outreach_base_drafts. Run the SQL setup for base drafts first.",
-        request_id: requestId
-      },
-      { status: 500 }
-    );
+    return buildErrorResponse(requestId, 500, "Missing table public.outreach_base_drafts. Run the SQL setup for base drafts first.");
   }
 
   if (baseData && !forceRegenerate) {
@@ -205,18 +210,14 @@ export async function POST(request: NextRequest) {
 
   if (!baseDraft) {
     if (usedTodayBase >= dailyLimit) {
-      return NextResponse.json(
-        {
-          error: `Daily base-draft limit reached (${dailyLimit}).`,
-          request_id: requestId,
-          quota: {
-            daily_limit: dailyLimit,
-            used_today: usedTodayBase,
-            remaining_today: 0,
-            reset_at_utc: new Date(new Date(dayStart).getTime() + 24 * 60 * 60 * 1000).toISOString()
-          }
-        },
-        { status: 429 }
+      return buildErrorResponse(requestId, 429, `Daily base-draft limit reached (${dailyLimit}).`, "DAILY_LIMIT_REACHED", {
+        quota: {
+          daily_limit: dailyLimit,
+          used_today: usedTodayBase,
+          remaining_today: 0,
+          reset_at_utc: new Date(new Date(dayStart).getTime() + 24 * 60 * 60 * 1000).toISOString()
+        }
+      }
       );
     }
 
@@ -270,7 +271,7 @@ export async function POST(request: NextRequest) {
         model_name: model,
         error_message: failure.slice(0, 1500)
       });
-      return NextResponse.json({ error: `LLM request failed: ${failure}`, request_id: requestId }, { status: 500 });
+      return buildErrorResponse(requestId, 500, `LLM request failed: ${failure}`);
     }
 
     const llmData = (await openAiResponse.json()) as OpenAiResponsePayload;
@@ -297,7 +298,7 @@ export async function POST(request: NextRequest) {
         model_name: model,
         error_message: `LLM returned empty draft. ${responseShape}`.slice(0, 1500)
       });
-      return NextResponse.json({ error: "LLM returned an empty draft.", request_id: requestId }, { status: 500 });
+      return buildErrorResponse(requestId, 500, "LLM returned an empty draft.");
     }
 
     const fallbackSubject = "Skilled [JOB_ROLE] eager to join [COMPANY_NAME]";
@@ -323,7 +324,7 @@ export async function POST(request: NextRequest) {
 
     if (insertBase.error) {
       console.error(`[outreach:draft:${requestId}] base_draft_insert_error`, insertBase.error.message);
-      return NextResponse.json({ error: insertBase.error.message, request_id: requestId }, { status: 500 });
+      return buildErrorResponse(requestId, 500, insertBase.error.message);
     }
     baseDraft = insertBase.data as BaseDraftRow;
     usedTodayBase += 1;
@@ -358,30 +359,22 @@ export async function POST(request: NextRequest) {
   if (creditError) {
     console.error(`[outreach:draft:${requestId}] credit_consume_error`, creditError.message);
     const maybeMissingFn = (creditError.message || "").toLowerCase().includes("function");
-    return NextResponse.json(
-      {
-        error: maybeMissingFn
-          ? "Missing credit SQL setup. Run docs/supabase_credits.sql first."
-          : creditError.message,
-        request_id: requestId
-      },
-      { status: 500 }
+    return buildErrorResponse(
+      requestId,
+      500,
+      maybeMissingFn ? "Missing credit SQL setup. Run docs/supabase_credits.sql first." : creditError.message
     );
   }
 
   const credit = ((creditRows as ConsumeCreditsResultRow[] | null) || [])[0];
   if (!credit?.success) {
-    return NextResponse.json(
-      {
-        error: credit?.message || "Insufficient credits.",
-        request_id: requestId,
-        credits: {
-          charged: 0,
-          balance: toNumber(credit?.balance),
-          event_type: creditEventType
-        }
-      },
-      { status: 402 }
+    return buildErrorResponse(requestId, 402, credit?.message || "Insufficient credits.", "OUT_OF_CREDITS", {
+      credits: {
+        charged: 0,
+        balance: toNumber(credit?.balance),
+        event_type: creditEventType
+      }
+    }
     );
   }
 

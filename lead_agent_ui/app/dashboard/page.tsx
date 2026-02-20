@@ -3,6 +3,7 @@
 import { History } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 import { ActionBar } from "@/components/action-bar";
 import { AgentProgressTimeline } from "@/components/agent-progress-timeline";
@@ -16,17 +17,24 @@ import { LeadList } from "@/components/lead-list";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { PreviousCompanySearchesDrawer } from "@/components/previous-company-searches-drawer";
 import { Card } from "@/components/ui/card";
+import { ToastStack, type ToastItem, type ToastKind } from "@/components/ui/toast-stack";
 import { normalizeHistoryPayload, type CompanySearchHistoryInput } from "@/lib/company-search-history";
 import { streamLeads } from "@/lib/api";
 import { classifyRole, filterContacts, type RoleFilter } from "@/lib/lead-utils";
+import {
+  mapDraftFailure,
+  outOfCreditsBanner,
+  toBalance,
+  type CreditBannerState,
+  type DraftFailurePayload,
+  type LeadSendState
+} from "@/lib/outreach-credit-ui";
 import { createClient } from "@/lib/supabase/client";
 import type { CompanySearchHistoryItem, Contact, JobDescriptionContext, LeadResponse } from "@/lib/types";
 
 const ACTIVE_JD_KEY_PREFIX = "lead_agent_active_jd";
 const RECENT_JD_KEY_PREFIX = "lead_agent_recent_jds";
 const HOME_STATE_KEY_PREFIX = "lead_agent_home_state_v1";
-
-type SendState = "idle" | "sending" | "sent" | "error";
 
 function nowTime(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -93,13 +101,17 @@ export default function HomePage() {
   const [recentJobs, setRecentJobs] = useState<JobDescriptionContext[]>([]);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
   const [pendingContact, setPendingContact] = useState<Contact | null>(null);
-  const [sendStates, setSendStates] = useState<Record<string, SendState>>({});
+  const [sendStates, setSendStates] = useState<Record<string, LeadSendState>>({});
   const [lastDraftError, setLastDraftError] = useState<string | null>(null);
   const [lastDraftPreview, setLastDraftPreview] = useState<{
     to: string;
     subject: string;
     body: string;
   } | null>(null);
+  const [creditsBalance, setCreditsBalance] = useState<number | null>(null);
+  const [isOutOfCredits, setIsOutOfCredits] = useState(false);
+  const [creditBanner, setCreditBanner] = useState<CreditBannerState | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [pendingSendDraft, setPendingSendDraft] = useState<{
     key: string;
     name: string;
@@ -140,6 +152,51 @@ export default function HomePage() {
   const log = (message: string) => {
     setActivityMessages((prev) => [...prev, `${nowTime()} ${message}`]);
   };
+
+  const pushToast = useCallback((kind: ToastKind, message: string) => {
+    const item: ToastItem = { id: crypto.randomUUID(), kind, message };
+    setToasts((prev) => [...prev, item]);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const clearOutOfCreditsSendStates = useCallback(() => {
+    setSendStates((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [key, state] of Object.entries(prev)) {
+        if (state === "out_of_credits") {
+          changed = true;
+          next[key] = "idle";
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const loadQuota = useCallback(async () => {
+    try {
+      const response = await fetch("/api/outreach/quota", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as {
+        credits?: { balance?: number };
+      };
+      const balance = toBalance(payload.credits?.balance);
+      setCreditsBalance(balance);
+      const zero = balance <= 0;
+      setIsOutOfCredits(zero);
+      if (zero) {
+        setCreditBanner(outOfCreditsBanner());
+      } else {
+        setCreditBanner((prev) => (prev?.title === "You're out of credits" ? null : prev));
+        clearOutOfCreditsSendStates();
+      }
+    } catch {
+      // keep prior known state
+    }
+  }, [clearOutOfCreditsSendStates]);
 
   const fetchSearchHistory = useCallback(async () => {
     if (!authUserId) {
@@ -277,6 +334,26 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!authResolved) return;
+    if (!authUserId) {
+      setCreditsBalance(null);
+      setIsOutOfCredits(false);
+      setCreditBanner(null);
+      return;
+    }
+    void loadQuota();
+
+    const refreshQuota = () => {
+      void loadQuota();
+    };
+
+    window.addEventListener("quota-refresh", refreshQuota);
+    return () => {
+      window.removeEventListener("quota-refresh", refreshQuota);
+    };
+  }, [authResolved, authUserId, loadQuota]);
+
+  useEffect(() => {
+    if (!authResolved) return;
     if (!homeStateKey) {
       setHomeStateRestored(true);
       return;
@@ -381,6 +458,15 @@ export default function HomePage() {
   const sendEmailForLead = async (contact: Contact, jobOverride?: JobDescriptionContext) => {
     if (!contact.email) return;
     setLastDraftError(null);
+    const key = contactKey(contact);
+
+    if (isOutOfCredits || (creditsBalance !== null && creditsBalance <= 0)) {
+      setSendStates((prev) => ({ ...prev, [key]: "out_of_credits" }));
+      setCreditBanner(outOfCreditsBanner());
+      pushToast("error", "Out of credits. Add credits to continue.");
+      log(`Out of credits while preparing draft for ${contact.name}`);
+      return;
+    }
 
     const job = jobOverride || activeJob;
     if (!job) {
@@ -390,7 +476,6 @@ export default function HomePage() {
       return;
     }
 
-    const key = contactKey(contact);
     setActiveSendKey(key);
     setSendStates((prev) => ({ ...prev, [key]: "sending" }));
     try {
@@ -403,16 +488,50 @@ export default function HomePage() {
           job
         })
       });
-      const draftJson = (await draftResponse.json()) as {
-        error?: string;
-        request_id?: string;
+      const draftJson = (await draftResponse.json()) as DraftFailurePayload & {
         subject?: string;
         body?: string;
+        credits?: {
+          charged?: number;
+          balance?: number;
+          event_type?: string;
+        };
       };
 
       if (!draftResponse.ok || !draftJson.subject || !draftJson.body) {
-        const message = draftJson.error || "Failed to generate email draft.";
-        throw new Error(draftJson.request_id ? `${message} (request: ${draftJson.request_id})` : message);
+        const mapped = mapDraftFailure(draftResponse.status, draftJson);
+        setSendStates((prev) => ({ ...prev, [key]: mapped.sendState }));
+        setIsOutOfCredits(mapped.isOutOfCredits);
+        if (mapped.banner) {
+          setCreditBanner(mapped.banner);
+        }
+        pushToast(mapped.toast.kind, mapped.toast.message);
+        setLastDraftError(mapped.detailMessage);
+        log(`${mapped.detailMessage} (${contact.name})`);
+
+        const nextBalance = toBalance(draftJson.credits?.balance);
+        if (draftJson.credits?.balance !== undefined) {
+          setCreditsBalance(nextBalance);
+          if (nextBalance <= 0) {
+            setIsOutOfCredits(true);
+            setCreditBanner(outOfCreditsBanner());
+            setSendStates((prev) => ({ ...prev, [key]: "out_of_credits" }));
+          }
+        }
+        return;
+      }
+
+      const nextBalance = toBalance(draftJson.credits?.balance);
+      if (draftJson.credits?.balance !== undefined) {
+        setCreditsBalance(nextBalance);
+        const zero = nextBalance <= 0;
+        setIsOutOfCredits(zero);
+        if (zero) {
+          setCreditBanner(outOfCreditsBanner());
+        } else {
+          setCreditBanner((prev) => (prev?.title === "You're out of credits" ? null : prev));
+          clearOutOfCreditsSendStates();
+        }
       }
 
       setLastDraftPreview({
@@ -434,6 +553,7 @@ export default function HomePage() {
       setSendStates((prev) => ({ ...prev, [key]: "error" }));
       const message = error instanceof Error ? error.message : "Failed to prepare draft.";
       setLastDraftError(message);
+      pushToast("error", "Draft generation failed. Please retry.");
       log(`${message} (${contact.name})`);
     } finally {
       setActiveSendKey(null);
@@ -557,6 +677,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-hero-gradient">
       <Header />
+      <ToastStack items={toasts} onDismiss={dismissToast} />
 
       <section className="mx-auto w-full max-w-7xl px-4 pb-16 pt-8 sm:px-6">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
@@ -602,6 +723,31 @@ export default function HomePage() {
             </div>
 
             <div className="space-y-6">
+              {creditBanner ? (
+                <Card className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-200">{creditBanner.title}</p>
+                      <p className="mt-1 text-sm text-amber-300">{creditBanner.detail}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={creditBanner.ctaHref}
+                        className="rounded-lg border border-transparent bg-gradient-to-r from-accent to-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:brightness-110"
+                      >
+                        {creditBanner.ctaLabel}
+                      </Link>
+                      <Link
+                        href="/profile#credits"
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:text-foreground"
+                      >
+                        View usage details
+                      </Link>
+                    </div>
+                  </div>
+                </Card>
+              ) : null}
+
               {!isLoading && requestError && (
                 <Card className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                   {requestError}
