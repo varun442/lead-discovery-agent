@@ -44,7 +44,7 @@ describe("lead-utils", () => {
 
   it("filters by role and confidence", () => {
     expect(filterContacts(contacts, "engineers", "all")).toHaveLength(1);
-    expect(filterContacts(contacts, "all", "verified")).toHaveLength(1);
+    expect(filterContacts(contacts, "engineers", "verified")).toHaveLength(1);
     expect(filterContacts(contacts, "managers", "high")).toHaveLength(1);
     expect(filterContacts(contacts, "recruiters", "low")).toHaveLength(1);
     expect(filterContacts(contacts, "engineers", "low")).toHaveLength(0);

@@ -12,14 +12,13 @@ import { EmptyState } from "@/components/empty-state";
 import { Header } from "@/components/header";
 import { JobContextBar } from "@/components/job-context-bar";
 import { JobDescriptionDrawer } from "@/components/job-description-drawer";
-import { LeadFilters } from "@/components/lead-filters";
 import { LeadList } from "@/components/lead-list";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { PreviousCompanySearchesDrawer } from "@/components/previous-company-searches-drawer";
 import { Card } from "@/components/ui/card";
 import { normalizeHistoryPayload, type CompanySearchHistoryInput } from "@/lib/company-search-history";
 import { streamLeads } from "@/lib/api";
-import { filterContacts, type ConfidenceFilter, type RoleFilter } from "@/lib/lead-utils";
+import { classifyRole, filterContacts, type RoleFilter } from "@/lib/lead-utils";
 import { createClient } from "@/lib/supabase/client";
 import type { CompanySearchHistoryItem, Contact, JobDescriptionContext, LeadResponse } from "@/lib/types";
 
@@ -72,6 +71,11 @@ function normalizeWarningMessage(input?: string): { title: string; detail: strin
   return { title: "Agent note", detail: warning };
 }
 
+function normalizeRoleFilter(value: unknown): RoleFilter {
+  if (value === "managers" || value === "engineers" || value === "recruiters") return value;
+  return "managers";
+}
+
 export default function HomePage() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
@@ -84,8 +88,7 @@ export default function HomePage() {
   const [result, setResult] = useState<LeadResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [activityMessages, setActivityMessages] = useState<string[]>([]);
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
-  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("managers");
   const [activeJob, setActiveJob] = useState<JobDescriptionContext | null>(null);
   const [recentJobs, setRecentJobs] = useState<JobDescriptionContext[]>([]);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
@@ -119,9 +122,20 @@ export default function HomePage() {
   const isStateReady = authResolved && homeStateRestored && jdStateRestored;
 
   const filteredContacts = useMemo(
-    () => filterContacts(result?.contacts || [], roleFilter, confidenceFilter),
-    [result?.contacts, roleFilter, confidenceFilter]
+    () => filterContacts(result?.contacts || [], roleFilter, "all"),
+    [result?.contacts, roleFilter]
   );
+  const roleCounts = useMemo(() => {
+    const counts: Record<RoleFilter, number> = {
+      managers: 0,
+      engineers: 0,
+      recruiters: 0
+    };
+    for (const contact of result?.contacts || []) {
+      counts[classifyRole(contact)] += 1;
+    }
+    return counts;
+  }, [result?.contacts]);
 
   const log = (message: string) => {
     setActivityMessages((prev) => [...prev, `${nowTime()} ${message}`]);
@@ -177,8 +191,7 @@ export default function HomePage() {
     setWebsite(item.website_url);
     setLinkedin(resolvedLinkedin);
     setAutoDetectLinkedin(false);
-    setRoleFilter("all");
-    setConfidenceFilter("all");
+    setRoleFilter("managers");
     setUnlockedEmails({});
     setPendingSendDraft(null);
     setActiveSendKey(null);
@@ -273,8 +286,7 @@ export default function HomePage() {
     setAutoDetectLinkedin(false);
     setResult(null);
     setRequestError(null);
-    setRoleFilter("all");
-    setConfidenceFilter("all");
+    setRoleFilter("managers");
     setUnlockedEmails({});
 
     try {
@@ -287,7 +299,6 @@ export default function HomePage() {
         result?: LeadResponse | null;
         requestError?: string | null;
         roleFilter?: RoleFilter;
-        confidenceFilter?: ConfidenceFilter;
         unlockedEmails?: Record<string, true>;
       };
 
@@ -297,8 +308,7 @@ export default function HomePage() {
       if (parsed.result) setResult(parsed.result);
       if (typeof parsed.requestError === "string") setRequestError(parsed.requestError);
       if (parsed.requestError === null) setRequestError(null);
-      if (parsed.roleFilter) setRoleFilter(parsed.roleFilter);
-      if (parsed.confidenceFilter) setConfidenceFilter(parsed.confidenceFilter);
+      setRoleFilter(normalizeRoleFilter(parsed.roleFilter));
       if (parsed.unlockedEmails) setUnlockedEmails(parsed.unlockedEmails);
     } catch {
       // ignore invalid persisted state
@@ -316,7 +326,6 @@ export default function HomePage() {
       result,
       requestError,
       roleFilter,
-      confidenceFilter,
       unlockedEmails
     };
     window.localStorage.setItem(homeStateKey, JSON.stringify(snapshot));
@@ -329,7 +338,6 @@ export default function HomePage() {
     result,
     requestError,
     roleFilter,
-    confidenceFilter,
     unlockedEmails,
     isLoading
   ]);
@@ -480,8 +488,7 @@ export default function HomePage() {
     setResult(null);
     setRequestError(null);
     setActivityMessages([]);
-    setRoleFilter("all");
-    setConfidenceFilter("all");
+    setRoleFilter("managers");
     setUnlockedEmails({});
     setPendingSendDraft(null);
     setActiveSendKey(null);
@@ -652,21 +659,18 @@ export default function HomePage() {
                     onOpen={() => setIsJobDrawerOpen(true)}
                     onClear={() => setActiveJob(null)}
                   />
-                  <LeadFilters
-                    roleFilter={roleFilter}
-                    confidenceFilter={confidenceFilter}
-                    onRoleChange={setRoleFilter}
-                    onConfidenceChange={setConfidenceFilter}
-                  />
                   <ActionBar
                     contacts={filteredContacts}
                     unlockedCount={Object.keys(unlockedEmails).length}
                     isGenerating={Boolean(activeSendKey)}
                   />
 
-                  {filteredContacts.length ? (
+                  {(result.contacts || []).length ? (
                     <LeadList
                       contacts={filteredContacts}
+                      roleFilter={roleFilter}
+                      roleCounts={roleCounts}
+                      onRoleChange={setRoleFilter}
                       sendStates={sendStates}
                       activeSendKey={activeSendKey}
                       unlockedEmails={unlockedEmails}

@@ -3,6 +3,7 @@ import type { ConfidenceFilter, RoleFilter } from "@/lib/lead-utils";
 interface LeadFiltersProps {
   roleFilter: RoleFilter;
   confidenceFilter: ConfidenceFilter;
+  roleCounts: Record<RoleFilter, number>;
   onRoleChange: (value: RoleFilter) => void;
   onConfidenceChange: (value: ConfidenceFilter) => void;
 }
@@ -20,17 +21,27 @@ function Pill({ active, label, onClick }: { active: boolean; label: string; onCl
   );
 }
 
-export function LeadFilters({ roleFilter, confidenceFilter, onRoleChange, onConfidenceChange }: LeadFiltersProps) {
+export function LeadFilters({ roleFilter, confidenceFilter, roleCounts, onRoleChange, onConfidenceChange }: LeadFiltersProps) {
+  const roleTabs: Array<{ key: RoleFilter; label: string }> = [
+    { key: "managers", label: "Managers" },
+    { key: "engineers", label: "Engineers" },
+    { key: "recruiters", label: "Recruiters" }
+  ];
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="space-y-3">
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">Filter by role</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">Contact roles</p>
           <div className="flex flex-wrap gap-2">
-            <Pill active={roleFilter === "all"} label="All" onClick={() => onRoleChange("all")} />
-            <Pill active={roleFilter === "engineers"} label="Engineers" onClick={() => onRoleChange("engineers")} />
-            <Pill active={roleFilter === "managers"} label="Managers" onClick={() => onRoleChange("managers")} />
-            <Pill active={roleFilter === "recruiters"} label="Recruiters" onClick={() => onRoleChange("recruiters")} />
+            {roleTabs.map((tab) => (
+              <Pill
+                key={tab.key}
+                active={roleFilter === tab.key}
+                label={`${tab.label} (${roleCounts[tab.key]})`}
+                onClick={() => onRoleChange(tab.key)}
+              />
+            ))}
           </div>
         </div>
 

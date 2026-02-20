@@ -1,9 +1,9 @@
 import type { Contact, EmailConfidence } from "@/lib/types";
 
-export type RoleFilter = "all" | "engineers" | "managers" | "recruiters";
+export type RoleFilter = "engineers" | "managers" | "recruiters";
 export type ConfidenceFilter = "all" | "verified" | "high" | "low";
 
-export function classifyRole(contact: Contact): Exclude<RoleFilter, "all"> {
+export function classifyRole(contact: Contact): RoleFilter {
   const title = (contact.title || "").toLowerCase();
   if (/(recruit|hiring|talent|acquisition)/.test(title)) return "recruiters";
   if (/(manager|director|head|lead|vp|chief|cto)/.test(title)) return "managers";
@@ -29,14 +29,14 @@ export function filterContacts(
   confidenceFilter: ConfidenceFilter
 ): Contact[] {
   return contacts.filter((contact) => {
-    const roleOk = roleFilter === "all" ? true : classifyRole(contact) === roleFilter;
+    const roleOk = classifyRole(contact) === roleFilter;
     const conf = confidenceLabel(contact.email_confidence);
     const confidenceOk = confidenceFilter === "all" ? true : conf === confidenceFilter;
     return roleOk && confidenceOk;
   });
 }
 
-export function roleDisplay(role: Exclude<RoleFilter, "all">): string {
+export function roleDisplay(role: RoleFilter): string {
   if (role === "engineers") return "Engineers";
   if (role === "managers") return "Managers";
   return "Recruiters";
