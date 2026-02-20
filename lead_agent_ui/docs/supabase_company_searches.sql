@@ -10,11 +10,16 @@ create table if not exists public.company_search_history (
   contacts_count integer not null default 0,
   status text not null check (status in ('success', 'error')),
   error_message text,
+  result_snapshot jsonb,
   last_searched_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, search_domain)
 );
+
+-- Safe forward migration for existing projects.
+alter table public.company_search_history
+  add column if not exists result_snapshot jsonb;
 
 create index if not exists company_search_history_user_updated_idx
   on public.company_search_history(user_id, updated_at desc);

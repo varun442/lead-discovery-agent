@@ -52,6 +52,26 @@ function openCompose(to: string, subject: string, body: string) {
   }
 }
 
+function normalizeWarningMessage(input?: string): { title: string; detail: string } | null {
+  if (!input) return null;
+  const warning = input.trim();
+  if (!warning) return null;
+
+  const low = warning.toLowerCase();
+  if (
+    low.includes("couldn't confidently match linkedin profiles") ||
+    low.includes("no relevant contacts matched the target company")
+  ) {
+    return {
+      title: "No strong company-match contacts yet",
+      detail:
+        "Try the exact company website and official LinkedIn company URL. If it still returns empty, try another company or check SerpAPI credits."
+    };
+  }
+
+  return { title: "Agent note", detail: warning };
+}
+
 export default function HomePage() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
@@ -153,11 +173,28 @@ export default function HomePage() {
   };
 
   const onLoadHistoryItem = (item: CompanySearchHistoryItem) => {
+    const resolvedLinkedin = item.linkedin_url || guessLinkedinFromWebsite(item.website_url);
     setWebsite(item.website_url);
-    setLinkedin(item.linkedin_url || "");
+    setLinkedin(resolvedLinkedin);
     setAutoDetectLinkedin(false);
+    setRoleFilter("all");
+    setConfidenceFilter("all");
+    setUnlockedEmails({});
+    setPendingSendDraft(null);
+    setActiveSendKey(null);
+    setLastDraftError(null);
+    setRequestError(item.error_message || null);
+
+    if (item.result_snapshot) {
+      setResult(item.result_snapshot);
+      log(`Loaded cached results: ${item.company_name || item.search_domain}`);
+    } else {
+      setResult(null);
+      log(`No cached result found. Refreshing from backend for ${item.company_name || item.search_domain}`);
+      void runDiscovery(item.website_url, resolvedLinkedin, "history");
+    }
+
     setIsHistoryDrawerOpen(false);
-    log(`Loaded previous search: ${item.company_name || item.search_domain}`);
   };
 
   const onDeleteHistoryItem = async (id: string) => {
@@ -432,10 +469,12 @@ export default function HomePage() {
     }
   };
 
-  const onSubmit = async () => {
+  const runDiscovery = async (submittedWebsiteInput: string, linkedinInput: string, source: "manual" | "history" = "manual") => {
+    if (isLoading) return;
+
+    const submittedWebsite = submittedWebsiteInput.trim();
+    const finalLinkedin = linkedinInput.trim();
     let hadError = false;
-    const submittedWebsite = website.trim();
-    const finalLinkedin = autoDetectLinkedin ? guessLinkedinFromWebsite(submittedWebsite) || linkedin.trim() : linkedin.trim();
 
     setIsLoading(true);
     setResult(null);
@@ -446,7 +485,12 @@ export default function HomePage() {
     setUnlockedEmails({});
     setPendingSendDraft(null);
     setActiveSendKey(null);
+    setLastDraftError(null);
+    setSendStates({});
     log("Agent started");
+    if (source === "history") {
+      log("Running backend refresh because selected history item has no cached result");
+    }
 
     try {
       const data = await streamLeads(submittedWebsite, finalLinkedin, {
@@ -473,7 +517,8 @@ export default function HomePage() {
         company_name: data.company || null,
         contacts_count: data.contacts.length || 0,
         status: data.error ? "error" : "success",
-        error_message: data.error || null
+        error_message: data.error || null,
+        result_snapshot: data
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch leads";
@@ -487,12 +532,19 @@ export default function HomePage() {
         company_name: null,
         contacts_count: 0,
         status: "error",
-        error_message: message
+        error_message: message,
+        result_snapshot: null
       });
     } finally {
       setIsLoading(false);
       log(hadError ? "Agent finished with errors" : "Agent finished");
     }
+  };
+
+  const onSubmit = async () => {
+    const submittedWebsite = website.trim();
+    const finalLinkedin = autoDetectLinkedin ? guessLinkedinFromWebsite(submittedWebsite) || linkedin.trim() : linkedin.trim();
+    await runDiscovery(submittedWebsite, finalLinkedin, "manual");
   };
 
   return (
@@ -563,7 +615,16 @@ export default function HomePage() {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="space-y-4">
                   {result.warning && (
                     <Card className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                      {result.warning}
+                      {(() => {
+                        const warning = normalizeWarningMessage(result.warning);
+                        if (!warning) return null;
+                        return (
+                          <div>
+                            <p className="font-medium">{warning.title}</p>
+                            <p className="mt-1 text-amber-300">{warning.detail}</p>
+                          </div>
+                        );
+                      })()}
                     </Card>
                   )}
                   {lastDraftError ? (

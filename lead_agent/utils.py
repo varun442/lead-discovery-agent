@@ -116,6 +116,28 @@ def _phrase_in_text(phrase: str, text: str) -> bool:
     return False
 
 
+def _sanitize_location(value: str) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return "Location unavailable"
+
+    candidate = re.sub(r"\s+", " ", candidate)
+    candidate = re.sub(r"\b(location|headquarters)\s*:\s*", "", candidate, flags=re.IGNORECASE)
+    candidate = re.split(r"https?://|www\.", candidate)[0]
+    candidate = re.split(r"\.\.\.|…", candidate)[0]
+    candidate = re.split(r"\s[-|·]\s", candidate)[0]
+    candidate = candidate.strip(" ,;:-")
+
+    if not candidate:
+        return "Location unavailable"
+
+    # Filter obvious non-location noise that sometimes appears in snippets.
+    if re.search(r"\b(about|experience|connections|followers|linkedin|profile|hiring)\b", candidate, flags=re.IGNORECASE):
+        return "Location unavailable"
+
+    return candidate
+
+
 def _alias_variants(alias: str) -> set[str]:
     normalized = _normalize_text(alias)
     if not normalized:
@@ -365,8 +387,10 @@ def get_company_metadata(company_name: str, linkedin_url: str, domain: str) -> d
     for key in ["headquarters", "location"]:
         value = kg.get(key)
         if isinstance(value, str) and value.strip():
-            metadata["location"] = value.strip()
-            break
+            cleaned = _sanitize_location(value)
+            if cleaned != "Location unavailable":
+                metadata["location"] = cleaned
+                break
 
     # Fallback parse from search snippets when KG is incomplete.
     if metadata["industry"] == "Industry unavailable" or metadata["location"] == "Location unavailable":
@@ -383,8 +407,8 @@ def get_company_metadata(company_name: str, linkedin_url: str, domain: str) -> d
                 metadata["industry"] = m.group(1).strip().title()
 
         if metadata["location"] == "Location unavailable":
-            m = re.search(r"(headquarters|location)[:\s]+([a-z][a-z0-9\s,.-]{3,80})", combined)
+            m = re.search(r"(headquarters|location)[:\s]+([a-z][a-z0-9\s,.-]{3,120})", combined, flags=re.IGNORECASE)
             if m:
-                metadata["location"] = m.group(2).strip().title()
+                metadata["location"] = _sanitize_location(m.group(2))
 
     return metadata

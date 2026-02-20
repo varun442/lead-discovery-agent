@@ -1,4 +1,4 @@
-import { extractSearchDomain, formatHistoryTimestamp, normalizeHistoryPayload } from "@/lib/company-search-history";
+import { extractSearchDomain, formatHistoryTimestamp, normalizeHistoryPayload, normalizeResultSnapshot } from "@/lib/company-search-history";
 
 describe("company-search-history helpers", () => {
   it("extractSearchDomain parses valid URL host", () => {
@@ -20,7 +20,14 @@ describe("company-search-history helpers", () => {
       company_name: "  Nutanix  ",
       contacts_count: 17.9,
       status: "error",
-      error_message: "  timeout  "
+      error_message: "  timeout  ",
+      result_snapshot: {
+        company: "Nutanix",
+        website: "https://www.nutanix.com/jobs",
+        email_domain: "nutanix.com",
+        linkedin_company: "https://linkedin.com/company/nutanix",
+        contacts: []
+      }
     });
 
     expect(payload.search_domain).toBe("nutanix.com");
@@ -30,6 +37,13 @@ describe("company-search-history helpers", () => {
     expect(payload.contacts_count).toBe(17);
     expect(payload.status).toBe("error");
     expect(payload.error_message).toBe("timeout");
+    expect(payload.result_snapshot?.company).toBe("Nutanix");
+  });
+
+  it("normalizeResultSnapshot returns null for unsupported input", () => {
+    expect(normalizeResultSnapshot(null)).toBeNull();
+    expect(normalizeResultSnapshot("bad")).toBeNull();
+    expect(normalizeResultSnapshot(10)).toBeNull();
   });
 
   it("formatHistoryTimestamp returns fallback for invalid timestamps", () => {

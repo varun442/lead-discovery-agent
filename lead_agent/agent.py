@@ -219,9 +219,9 @@ def build_contact_records(
     }
     if not contacts:
         result["warning"] = (
-            "No relevant contacts matched the target company from search results. "
-            "Try a more precise company website/LinkedIn URL and retry. "
-            "If this persists, verify SERPAPI_KEY and remaining SerpAPI credits."
+            "We couldn't confidently match LinkedIn profiles to this exact company. "
+            "Try the official company website and LinkedIn company URL, then run again. "
+            "If this still fails, try another company or verify your SerpAPI key and credits."
         )
     return result
 

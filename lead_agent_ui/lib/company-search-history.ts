@@ -1,4 +1,4 @@
-import type { CompanySearchStatus } from "@/lib/types";
+import type { CompanySearchStatus, LeadResponse } from "@/lib/types";
 
 export interface CompanySearchHistoryInput {
   website_url: string;
@@ -7,6 +7,7 @@ export interface CompanySearchHistoryInput {
   contacts_count?: number | null;
   status?: CompanySearchStatus | null;
   error_message?: string | null;
+  result_snapshot?: LeadResponse | null;
 }
 
 export interface NormalizedCompanySearchHistoryPayload {
@@ -17,6 +18,53 @@ export interface NormalizedCompanySearchHistoryPayload {
   contacts_count: number;
   status: CompanySearchStatus;
   error_message: string | null;
+  result_snapshot: LeadResponse | null;
+}
+
+function toStringOrEmpty(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function toStringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function toEmailConfidence(value: unknown): "high" | "inferred" | "unknown" {
+  if (value === "high" || value === "inferred" || value === "unknown") return value;
+  return "unknown";
+}
+
+export function normalizeResultSnapshot(input: unknown): LeadResponse | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  const contactsRaw = Array.isArray(raw.contacts) ? raw.contacts : [];
+
+  const contacts = contactsRaw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const contact = item as Record<string, unknown>;
+      return {
+        name: toStringOrEmpty(contact.name),
+        title: toStringOrEmpty(contact.title),
+        linkedin: toStringOrEmpty(contact.linkedin),
+        email: toStringOrEmpty(contact.email),
+        email_confidence: toEmailConfidence(contact.email_confidence)
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  return {
+    company: toStringOrEmpty(raw.company),
+    website: toStringOrEmpty(raw.website),
+    email_domain: toStringOrEmpty(raw.email_domain),
+    linkedin_company: toStringOrEmpty(raw.linkedin_company),
+    company_logo: toStringOrNull(raw.company_logo) || undefined,
+    industry: toStringOrNull(raw.industry) || undefined,
+    location: toStringOrNull(raw.location) || undefined,
+    contacts,
+    warning: toStringOrNull(raw.warning) || undefined,
+    error: toStringOrNull(raw.error) || undefined
+  };
 }
 
 export function extractSearchDomain(website: string): string {
@@ -43,6 +91,7 @@ export function normalizeHistoryPayload(input: CompanySearchHistoryInput): Norma
   const contactsCount = Number.isFinite(input.contacts_count) ? Math.max(0, Math.floor(Number(input.contacts_count))) : 0;
   const errorMessage = status === "error" ? input.error_message?.trim() || null : null;
   const searchDomain = extractSearchDomain(website);
+  const resultSnapshot = normalizeResultSnapshot(input.result_snapshot);
 
   return {
     search_domain: searchDomain,
@@ -51,7 +100,8 @@ export function normalizeHistoryPayload(input: CompanySearchHistoryInput): Norma
     company_name: company,
     contacts_count: contactsCount,
     status,
-    error_message: errorMessage
+    error_message: errorMessage,
+    result_snapshot: resultSnapshot
   };
 }
 

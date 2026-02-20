@@ -10,6 +10,11 @@ function parseLimit(raw: string | null): number {
   return Math.min(parsed, 50);
 }
 
+function isMissingResultSnapshotColumnError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("result_snapshot") && normalized.includes("column");
+}
+
 async function createAuthedClient(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -90,25 +95,54 @@ export async function POST(request: NextRequest) {
   }
 
   const nowIso = new Date().toISOString();
+  const upsertPayload = {
+    user_id: auth.user.id,
+    search_domain: payload.search_domain,
+    website_url: payload.website_url,
+    linkedin_url: payload.linkedin_url,
+    company_name: payload.company_name,
+    contacts_count: payload.contacts_count,
+    status: payload.status,
+    error_message: payload.error_message,
+    result_snapshot: payload.result_snapshot,
+    last_searched_at: nowIso,
+    updated_at: nowIso
+  };
+
   const { data, error } = await auth.supabase
     .from("company_search_history")
-    .upsert(
-      {
-        user_id: auth.user.id,
-        search_domain: payload.search_domain,
-        website_url: payload.website_url,
-        linkedin_url: payload.linkedin_url,
-        company_name: payload.company_name,
-        contacts_count: payload.contacts_count,
-        status: payload.status,
-        error_message: payload.error_message,
-        last_searched_at: nowIso,
-        updated_at: nowIso
-      },
-      { onConflict: "user_id,search_domain" }
-    )
+    .upsert(upsertPayload, { onConflict: "user_id,search_domain" })
     .select("*")
     .single();
+
+  if (error && isMissingResultSnapshotColumnError(error.message)) {
+    const fallbackPayload = {
+      user_id: auth.user.id,
+      search_domain: payload.search_domain,
+      website_url: payload.website_url,
+      linkedin_url: payload.linkedin_url,
+      company_name: payload.company_name,
+      contacts_count: payload.contacts_count,
+      status: payload.status,
+      error_message: payload.error_message,
+      last_searched_at: nowIso,
+      updated_at: nowIso
+    };
+    const fallback = await auth.supabase
+      .from("company_search_history")
+      .upsert(fallbackPayload, { onConflict: "user_id,search_domain" })
+      .select("*")
+      .single();
+
+    if (fallback.error) {
+      return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      item: fallback.data as CompanySearchHistoryItem,
+      warning: "History cache column missing. Run supabase_company_searches.sql migration for instant result restore."
+    });
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

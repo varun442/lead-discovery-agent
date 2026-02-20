@@ -42,6 +42,7 @@ export interface CompanySearchHistoryItem {
   contacts_count: number;
   status: CompanySearchStatus;
   error_message: string | null;
+  result_snapshot: LeadResponse | null;
   last_searched_at: string;
   created_at: string;
   updated_at: string;

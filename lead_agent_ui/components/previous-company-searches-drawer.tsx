@@ -128,7 +128,7 @@ export function PreviousCompanySearchesDrawer({
 
         <p className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted">
           <Link2 className="h-3 w-3" />
-          Clicking “Load” only fills fields. It does not rerun search.
+          “Load” restores saved fields and cached results (if available). It does not rerun search.
         </p>
       </div>
     </div>
