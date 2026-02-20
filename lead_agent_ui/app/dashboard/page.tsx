@@ -18,7 +18,7 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { PreviousCompanySearchesDrawer } from "@/components/previous-company-searches-drawer";
 import { Card } from "@/components/ui/card";
 import { ToastStack, type ToastItem, type ToastKind } from "@/components/ui/toast-stack";
-import { normalizeHistoryPayload, type CompanySearchHistoryInput } from "@/lib/company-search-history";
+import { extractSearchDomain, normalizeHistoryPayload, type CompanySearchHistoryInput } from "@/lib/company-search-history";
 import { streamLeads } from "@/lib/api";
 import { classifyRole, filterContacts, type RoleFilter } from "@/lib/lead-utils";
 import {
@@ -29,6 +29,7 @@ import {
   type DraftFailurePayload,
   type LeadSendState
 } from "@/lib/outreach-credit-ui";
+import { resolveSearchDomain, shouldResetOnCompanyChange } from "@/lib/search-context";
 import { createClient } from "@/lib/supabase/client";
 import type { CompanySearchHistoryItem, Contact, JobDescriptionContext, LeadResponse } from "@/lib/types";
 
@@ -127,6 +128,7 @@ export default function HomePage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyDeleteId, setHistoryDeleteId] = useState<string | null>(null);
   const [isHistoryClearing, setIsHistoryClearing] = useState(false);
+  const [lastSearchDomain, setLastSearchDomain] = useState<string | null>(null);
 
   const homeStateKey = authUserId ? `${HOME_STATE_KEY_PREFIX}:${authUserId}` : null;
   const activeJdKey = authUserId ? `${ACTIVE_JD_KEY_PREFIX}:${authUserId}` : null;
@@ -243,16 +245,45 @@ export default function HomePage() {
     }
   };
 
+  const resetOutreachUiState = useCallback(() => {
+    setLastDraftPreview(null);
+    setPendingSendDraft(null);
+    setLastDraftError(null);
+    setActiveSendKey(null);
+    setSendStates({});
+    setUnlockedEmails({});
+    setPendingContact(null);
+  }, []);
+
+  const handleCompanyChange = useCallback(
+    (nextDomainRaw: string) => {
+      const nextDomain = nextDomainRaw.trim().toLowerCase();
+      const previousDomain = (lastSearchDomain || "").trim().toLowerCase();
+
+      if (shouldResetOnCompanyChange(previousDomain, nextDomain)) {
+        resetOutreachUiState();
+        setActiveJob(null);
+        log(`Company changed (${previousDomain} -> ${nextDomain}). Cleared previous draft and job context.`);
+      }
+
+      if (nextDomain) setLastSearchDomain(nextDomain);
+    },
+    [lastSearchDomain, resetOutreachUiState]
+  );
+
   const onLoadHistoryItem = (item: CompanySearchHistoryItem) => {
     const resolvedLinkedin = item.linkedin_url || guessLinkedinFromWebsite(item.website_url);
+    const nextDomain = resolveSearchDomain({
+      searchDomain: item.search_domain,
+      result: item.result_snapshot,
+      website: item.website_url
+    });
+
+    handleCompanyChange(nextDomain);
     setWebsite(item.website_url);
     setLinkedin(resolvedLinkedin);
     setAutoDetectLinkedin(false);
     setRoleFilter("managers");
-    setUnlockedEmails({});
-    setPendingSendDraft(null);
-    setActiveSendKey(null);
-    setLastDraftError(null);
     setRequestError(item.error_message || null);
 
     if (item.result_snapshot) {
@@ -365,6 +396,7 @@ export default function HomePage() {
     setRequestError(null);
     setRoleFilter("managers");
     setUnlockedEmails({});
+    setLastSearchDomain(null);
 
     try {
       const raw = window.localStorage.getItem(homeStateKey);
@@ -377,6 +409,7 @@ export default function HomePage() {
         requestError?: string | null;
         roleFilter?: RoleFilter;
         unlockedEmails?: Record<string, true>;
+        lastSearchDomain?: string | null;
       };
 
       if (typeof parsed.website === "string") setWebsite(parsed.website);
@@ -387,6 +420,12 @@ export default function HomePage() {
       if (parsed.requestError === null) setRequestError(null);
       setRoleFilter(normalizeRoleFilter(parsed.roleFilter));
       if (parsed.unlockedEmails) setUnlockedEmails(parsed.unlockedEmails);
+      const restoredDomain = resolveSearchDomain({
+        searchDomain: parsed.lastSearchDomain,
+        result: parsed.result || null,
+        website: parsed.website
+      });
+      setLastSearchDomain(restoredDomain || null);
     } catch {
       // ignore invalid persisted state
     } finally {
@@ -403,7 +442,8 @@ export default function HomePage() {
       result,
       requestError,
       roleFilter,
-      unlockedEmails
+      unlockedEmails,
+      lastSearchDomain
     };
     window.localStorage.setItem(homeStateKey, JSON.stringify(snapshot));
   }, [
@@ -416,6 +456,7 @@ export default function HomePage() {
     requestError,
     roleFilter,
     unlockedEmails,
+    lastSearchDomain,
     isLoading
   ]);
 
@@ -602,18 +643,17 @@ export default function HomePage() {
 
     const submittedWebsite = submittedWebsiteInput.trim();
     const finalLinkedin = linkedinInput.trim();
+    const nextDomain = extractSearchDomain(submittedWebsite);
     let hadError = false;
+
+    handleCompanyChange(nextDomain);
 
     setIsLoading(true);
     setResult(null);
     setRequestError(null);
     setActivityMessages([]);
     setRoleFilter("managers");
-    setUnlockedEmails({});
-    setPendingSendDraft(null);
-    setActiveSendKey(null);
     setLastDraftError(null);
-    setSendStates({});
     log("Agent started");
     if (source === "history") {
       log("Running backend refresh because selected history item has no cached result");
@@ -682,7 +722,7 @@ export default function HomePage() {
       <section className="mx-auto w-full max-w-7xl px-4 pb-16 pt-8 sm:px-6">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <div className="mb-6">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Lead Discovery Agent</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">WarmReach</h1>
             <p className="mt-2 text-sm text-muted">
               Discover engineering leaders and hiring contacts from any company in seconds.
             </p>
