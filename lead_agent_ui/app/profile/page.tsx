@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { FileText, Upload, UserCircle2 } from "lucide-react";
 
 import { Header } from "@/components/header";
@@ -47,6 +48,7 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -198,7 +200,12 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-hero-gradient">
       <Header />
 
-      <section className="mx-auto w-full max-w-4xl px-4 pb-12 pt-8 sm:px-6">
+      <motion.section
+        className="mx-auto w-full max-w-4xl px-4 pb-12 pt-8 sm:px-6"
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={prefersReducedMotion ? undefined : { duration: 0.18, ease: "easeOut" }}
+      >
         <div className="mb-6">
           <h1 className="text-3xl font-semibold text-foreground">My Profile</h1>
           <p className="mt-1 text-sm text-muted">Manage your account and resume used for personalized outreach.</p>
@@ -224,7 +231,15 @@ export default function ProfilePage() {
               <h2 className="text-base font-semibold text-foreground">Resume</h2>
             </div>
 
-            {isLoading ? <p className="text-sm text-muted">Loading profile...</p> : null}
+            {isLoading ? (
+              <div className="space-y-3 rounded-xl border border-border bg-black/30 p-4">
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-4 w-1/3 rounded bg-zinc-800" />
+                  <div className="h-3 w-2/3 rounded bg-zinc-800" />
+                  <div className="h-3 w-1/4 rounded bg-zinc-800" />
+                </div>
+              </div>
+            ) : null}
 
             {!isLoading && resume ? (
               <div className="space-y-3 rounded-xl border border-border bg-black/30 p-4">
@@ -298,7 +313,7 @@ export default function ProfilePage() {
             </div>
           </Card>
         </div>
-      </section>
+      </motion.section>
     </main>
   );
 }
