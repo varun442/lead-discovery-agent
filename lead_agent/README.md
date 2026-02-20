@@ -1,4 +1,4 @@
-# Lead Discovery Agent Backend
+# WarmReach Backend
 
 Python backend that finds engineering/hiring contacts for a company and serves both CLI + FastAPI endpoints.
 

@@ -286,7 +286,7 @@ export default function ProfilePage() {
             <h2 className="text-base font-semibold text-foreground">Credits & Plans</h2>
             <p className="mt-2 text-sm text-muted">Billing setup is coming soon.</p>
             <p className="mt-1 text-sm text-muted">
-              You can continue lead discovery; AI draft send is blocked when credits are 0.
+              You can continue using WarmReach for lead discovery; AI draft send is blocked when credits are 0.
             </p>
             <div className="mt-4">
               <a

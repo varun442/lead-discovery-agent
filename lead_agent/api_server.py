@@ -16,7 +16,7 @@ from agent import run_agent
 
 load_dotenv(override=True)
 
-app = FastAPI(title="Lead Discovery Agent API", version="1.0.0")
+app = FastAPI(title="WarmReach API", version="1.0.0")
 
 origins_env = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 allowed_origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]

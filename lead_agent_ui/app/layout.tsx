@@ -6,8 +6,8 @@ import "./globals.css";
 const sourceSans3 = Source_Sans_3({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Lead Discovery Agent",
-  description: "Vercel-style UI for lead discovery"
+  title: "WarmReach",
+  description: "WarmReach: find hiring contacts and send personalized outreach"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

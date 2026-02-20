@@ -1,4 +1,4 @@
-# Lead Discovery Agent
+# WarmReach
 
 AI-assisted lead discovery and outreach platform:
 - discover engineering/hiring contacts for a target company

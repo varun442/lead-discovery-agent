@@ -1,6 +1,6 @@
-# Lead Agent UI (Next.js + TypeScript)
+# WarmReach UI (Next.js + TypeScript)
 
-Frontend for the Lead Discovery Agent with Supabase auth, profile/resume management, AI email drafting, and credit usage controls.
+Frontend for WarmReach with Supabase auth, profile/resume management, AI email drafting, and credit usage controls.
 
 ## Stack
 - Next.js App Router

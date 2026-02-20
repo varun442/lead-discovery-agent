@@ -62,7 +62,7 @@ export default function LandingPage() {
             <span className="rounded-lg border border-border bg-card p-2 text-accent">
               <Radar className="h-4 w-4" />
             </span>
-            <p className="text-sm font-semibold tracking-wide text-foreground">Lead Discovery Agent</p>
+            <p className="text-sm font-semibold tracking-wide text-foreground">WarmReach</p>
           </Link>
 
           <nav className="hidden items-center gap-6 text-sm text-muted md:flex">
@@ -155,7 +155,7 @@ export default function LandingPage() {
               </ul>
             </div>
             <div className="rounded-xl border border-border bg-black/30 p-4">
-              <p className="text-sm font-semibold text-foreground">With Lead Discovery Agent</p>
+              <p className="text-sm font-semibold text-foreground">With WarmReach</p>
               <ul className="mt-3 space-y-2 text-sm text-muted">
                 <li>- Find the right engineering contacts</li>
                 <li>- Send personalized outreach</li>

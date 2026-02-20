@@ -126,7 +126,7 @@ export default function SignInPage() {
     <main className="flex min-h-screen items-center justify-center bg-hero-gradient px-4">
       <Card className="w-full max-w-md rounded-2xl p-6">
         <h1 className="text-2xl font-semibold text-foreground">Sign In</h1>
-        <p className="mt-1 text-sm text-muted">Access your Lead Discovery workspace.</p>
+        <p className="mt-1 text-sm text-muted">Access your WarmReach workspace.</p>
 
         <div className="mt-5 space-y-4">
           <div>
