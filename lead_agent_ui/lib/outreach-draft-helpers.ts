@@ -16,7 +16,7 @@ export interface OpenAiResponsePayload {
   };
 }
 
-export const PROMPT_VERSION = "v3_firstname_joburl_no_emdash";
+export const PROMPT_VERSION = "v2_dynamic_opening";
 
 export const OPENING_LINE_CANDIDATES = [
   "I know your inbox is probably overflowing right now, so I'll make this quick and worthwhile.",
@@ -88,29 +88,6 @@ export function pickOpeningLine(seed: string): string {
   return OPENING_LINE_CANDIDATES[index];
 }
 
-export function extractFirstName(name: string): string {
-  const fallback = "Hiring Team";
-  const normalized = (name || "").trim().replace(/\s+/g, " ");
-  if (!normalized) return fallback;
-
-  for (const token of normalized.split(" ")) {
-    const cleaned = token.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
-    if (cleaned && /[\p{L}]/u.test(cleaned)) {
-      return cleaned;
-    }
-  }
-  return fallback;
-}
-
-export function stripEmAndEnDashes(text: string): string {
-  return text
-    .replace(/[—–]/g, ", ")
-    .replace(/[ \t]*,[ \t]*/g, ", ")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .trim();
-}
-
 export function buildBasePrompt(params: {
   senderName: string;
   senderRole: string;
@@ -135,11 +112,9 @@ Follow these strict rules:
 7) Output only the final email text.
 8) Use placeholders exactly:
    - [RECIPIENT_NAME]
-   - [RECIPIENT_FIRST_NAME]
    - [RECIPIENT_TITLE]
    - [COMPANY_NAME]
    - [JOB_ROLE]
-   - [JOB_URL]
 9) The sentence immediately after greeting must be a concise, human opening line in this style:
    "I know your inbox is probably overflowing right now, so I'll make this quick and worthwhile."
    "I'll keep this short because I know your time is valuable."
@@ -149,7 +124,6 @@ Follow these strict rules:
    Do NOT reuse this exact sentence:
    "I know you're busy with your important work, so I'll get straight to the point without wasting your time."
 10) Keep that opening line to one sentence only.
-11) Do NOT use em dash or en dash characters anywhere in the final output.
 
 Context:
 - Sender name: ${senderName}
@@ -166,7 +140,7 @@ EMAIL TEMPLATE TO FOLLOW EXACTLY:
 
 Subject: Skilled [Job role] eager to join [company name]
 
-Hey [RECIPIENT_FIRST_NAME],
+Hey [Recruiter's Name],
 
 [OPENING_LINE]
 
@@ -183,7 +157,7 @@ Here are a few highlights of my experience:
 
 And I have attached my resume; you can check more of my work.
 
-I noticed a job opportunity at your [Company] hiring for a [Job Role] (job URL: [JOB_URL]), and I couldn’t resist reaching out. I've researched your project and found it incredibly interesting, and I am eager to contribute to your team. I believe I would be a valuable asset to [Company Name]. Please give me a chance to prove myself, test me, observe my work, and then decide if I am a good fit.
+I noticed a job opportunity at your [Company] hiring for a [Job Role], and I couldn’t resist reaching out. I've researched your project and found it incredibly interesting, and I am eager to contribute to your team. I believe I would be a valuable asset to [Company Name]. Please give me a chance to prove myself—test me, observe my work, and then decide if I am a good fit.
 
 I totally understand that you are busy and it's okay even if you don’t respond to my mail. I will do a follow up in the next 3 days just to make sure that you have read my mail.
 
@@ -199,26 +173,21 @@ export function personalizeTemplate(params: {
   contactTitle: string;
   companyName: string;
   jobRole: string;
-  jobUrl: string;
   openingLine: string;
 }): { subject: string; body: string } {
-  const { subjectTemplate, bodyTemplate, contactName, contactTitle, companyName, jobRole, jobUrl, openingLine } = params;
+  const { subjectTemplate, bodyTemplate, contactName, contactTitle, companyName, jobRole, openingLine } = params;
   const recipient = contactName || "Hiring Team";
-  const firstName = extractFirstName(contactName || "");
   const role = jobRole || "role";
   const company = companyName || "company";
-  const safeJobUrl = (jobUrl || "").trim() || "the role link was not provided";
 
   const replacer = (input: string) =>
     input
       .replaceAll("[RECIPIENT_NAME]", recipient)
-      .replaceAll("[RECIPIENT_FIRST_NAME]", firstName)
       .replaceAll("[RECIPIENT_TITLE]", contactTitle || "Hiring Team")
       .replaceAll("[COMPANY_NAME]", company)
       .replaceAll("[JOB_ROLE]", role)
-      .replaceAll("[JOB_URL]", safeJobUrl)
       .replaceAll("[OPENING_LINE]", openingLine)
-      .replaceAll("[Recruiter's Name]", firstName)
+      .replaceAll("[Recruiter's Name]", recipient)
       .replaceAll("[company name]", company)
       .replaceAll("[Company Name]", company)
       .replaceAll("[Company]", company)
@@ -230,7 +199,7 @@ export function personalizeTemplate(params: {
       );
 
   return {
-    subject: stripEmAndEnDashes(replacer(subjectTemplate)),
-    body: stripEmAndEnDashes(replacer(bodyTemplate))
+    subject: replacer(subjectTemplate),
+    body: replacer(bodyTemplate)
   };
 }

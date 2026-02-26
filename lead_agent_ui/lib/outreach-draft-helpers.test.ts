@@ -1,12 +1,10 @@
 import {
   OPENING_LINE_CANDIDATES,
-  extractFirstName,
   extractDraftText,
   isMissingRelationError,
   parseDraft,
   pickOpeningLine,
   personalizeTemplate,
-  stripEmAndEnDashes,
   toNumber,
 } from "@/lib/outreach-draft-helpers";
 
@@ -53,34 +51,19 @@ describe("outreach-draft-helpers", () => {
     const out = personalizeTemplate({
       subjectTemplate: "Skilled [JOB_ROLE] eager to join [COMPANY_NAME]",
       bodyTemplate:
-        "Hey [RECIPIENT_FIRST_NAME],\n\nI know you're busy with your important work, so I'll get straight to the point without wasting your time.\n\nRole: [JOB_ROLE] @ [COMPANY_NAME], URL: [JOB_URL]",
+        "Hey [Recruiter's Name],\n\nI know you're busy with your important work, so I'll get straight to the point without wasting your time.\n\nRole: [JOB_ROLE] @ [COMPANY_NAME]",
       contactName: "Amitesh M.",
       contactTitle: "Director Engineering",
       companyName: "Nutanix",
       jobRole: "Frontend Engineer",
-      jobUrl: "https://careers.nutanix.com/job/123",
       openingLine: "I'll keep this short because I know your time is valuable.",
     });
 
     expect(out.subject).toContain("Frontend Engineer");
     expect(out.subject).toContain("Nutanix");
-    expect(out.body).toContain("Hey Amitesh,");
+    expect(out.body).toContain("Hey Amitesh M.");
     expect(out.body).toContain("I'll keep this short because I know your time is valuable.");
-    expect(out.body).toContain("https://careers.nutanix.com/job/123");
     expect(out.body).not.toContain("I know you're busy with your important work");
-    expect(out.body).not.toContain("—");
-    expect(out.body).not.toContain("–");
-  });
-
-  it("extractFirstName handles noisy names and fallback", () => {
-    expect(extractFirstName("👩‍💻 Anna Spysz")).toBe("Anna");
-    expect(extractFirstName("Katherine M.")).toBe("Katherine");
-    expect(extractFirstName("")).toBe("Hiring Team");
-  });
-
-  it("stripEmAndEnDashes removes typographic dashes", () => {
-    const cleaned = stripEmAndEnDashes("Please test me—review this – and respond.");
-    expect(cleaned).toBe("Please test me, review this, and respond.");
   });
 
   it("toNumber handles number, string and null", () => {

@@ -7,7 +7,7 @@ import requests
 
 SERPAPI_URL = "https://serpapi.com/search"
 HUNTER_DOMAIN_SEARCH_URL = "https://api.hunter.io/v2/domain-search"
-APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
+HUNTER_EMAIL_FINDER_URL = "https://api.hunter.io/v2/email-finder"
 
 
 TITLE_KEYWORDS = [
@@ -317,95 +317,37 @@ def hunter_domain_search(domain: str, progress: ProgressFn = None) -> list[dict]
         raise RuntimeError(f"Hunter domain search failed: {exc}") from exc
 
 
-def apollo_enrich_person(first_name: str, last_name: str, domain: str, progress: ProgressFn = None) -> dict:
-    """Fetch a person-level enrichment payload from Apollo."""
-    api_key = os.getenv("APOLLO_API_KEY", "").strip()
-    if not api_key:
-        return {}
+def hunter_email_finder(first_name: str, last_name: str, domain: str, progress: ProgressFn = None) -> dict:
+    """Look up a specific person's work email via Hunter Email Finder.
 
-    endpoint = os.getenv("APOLLO_ENRICH_URL", APOLLO_ENRICH_URL).strip() or APOLLO_ENRICH_URL
-    payload = {
-        "first_name": (first_name or "").strip(),
-        "last_name": (last_name or "").strip(),
-        "organization_domains": [domain] if domain else [],
-        "reveal_personal_emails": False,
-    }
-    # Remove empty fields to avoid noisy API validation errors.
-    payload = {k: v for k, v in payload.items() if v}
+    Returns the Hunter ``data`` dict which includes ``email`` and ``score``
+    when a match is found, or an empty dict when nothing is found.
+    """
+    api_key = os.getenv("HUNTER_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Missing HUNTER_API_KEY")
+
+    if not first_name or not last_name or not domain:
+        return {}
 
     try:
         if progress:
-            progress(f"Apollo enrich lookup for {first_name} {last_name}".strip())
-        response = requests.post(
-            endpoint,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
+            progress(f"Hunter email-finder lookup for {first_name} {last_name} at {domain}")
+        response = requests.get(
+            HUNTER_EMAIL_FINDER_URL,
+            params={
+                "domain": domain,
+                "first_name": first_name,
+                "last_name": last_name,
+                "api_key": api_key,
             },
-            json=payload,
             timeout=20,
         )
         response.raise_for_status()
-        data = response.json() or {}
-        if isinstance(data, dict) and data.get("error"):
-            raise RuntimeError(f"Apollo enrich error: {data.get('error')}")
+        data = response.json().get("data", {}) or {}
         return data if isinstance(data, dict) else {}
     except requests.RequestException as exc:
-        raise RuntimeError(f"Apollo enrich failed: {exc}") from exc
-
-
-def apollo_extract_email(enrich_payload: dict) -> str:
-    """Extract likely work email from Apollo enrichment payload."""
-    if not isinstance(enrich_payload, dict):
-        return ""
-
-    def _is_email(value: str) -> bool:
-        return bool(value and isinstance(value, str) and "@" in value)
-
-    direct_keys = ["email", "work_email", "business_email", "professional_email"]
-    for key in direct_keys:
-        value = enrich_payload.get(key)
-        if _is_email(value):
-            return value.strip().lower()
-
-    person = enrich_payload.get("person")
-    if isinstance(person, dict):
-        for key in direct_keys:
-            value = person.get(key)
-            if _is_email(value):
-                return value.strip().lower()
-
-        emails = person.get("emails")
-        if isinstance(emails, list):
-            for item in emails:
-                if isinstance(item, dict):
-                    candidate = item.get("email") or item.get("value")
-                    if _is_email(candidate):
-                        return candidate.strip().lower()
-                elif _is_email(item):
-                    return str(item).strip().lower()
-
-    return ""
-
-
-def apollo_status(enrich_payload: dict) -> str:
-    """Extract a concise Apollo status string for diagnostics."""
-    if not isinstance(enrich_payload, dict):
-        return "apollo"
-
-    person = enrich_payload.get("person")
-    containers = [enrich_payload]
-    if isinstance(person, dict):
-        containers.append(person)
-
-    keys = ["email_status", "status", "verification_status", "email_confidence"]
-    for container in containers:
-        for key in keys:
-            value = container.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip().lower()
-
-    return "apollo"
+        raise RuntimeError(f"Hunter email-finder failed: {exc}") from exc
 
 
 def infer_email(name: str, domain: str) -> list[str]:
