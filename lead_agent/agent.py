@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import os
 from collections import Counter, defaultdict
 from typing import Callable
 
 from utils import (
     TITLE_KEYWORDS,
-    apollo_enrich_person,
-    apollo_extract_email,
-    apollo_status,
     extract_company_name_from_linkedin_url,
     find_linkedin_people,
     get_company_metadata,
@@ -17,7 +13,6 @@ from utils import (
 )
 
 ProgressFn = Callable[[str], None] | None
-APOLLO_CONTACT_CAP = 40
 
 
 def get_company_name_from_domain(domain: str) -> str:
@@ -114,13 +109,6 @@ def find_relevant_contacts(
     if progress:
         progress(f"Collected {len(candidates)} candidate profiles")
 
-    apollo_enabled = bool(os.getenv("APOLLO_API_KEY", "").strip())
-    if progress:
-        if apollo_enabled:
-            progress(f"Apollo primary enabled (cap: top {APOLLO_CONTACT_CAP} contacts)")
-        else:
-            progress("Apollo skipped due to missing key; using Hunter fallback")
-
     hunter_records = []
     try:
         hunter_records = hunter_domain_search(domain, progress=progress)
@@ -142,14 +130,6 @@ def find_relevant_contacts(
 
     contacts: list[dict] = []
     seen_linkedin = set()
-    stats = {
-        "apollo_attempted": 0,
-        "apollo_hits": 0,
-        "hunter_fallback_attempted": 0,
-        "hunter_fallback_hits": 0,
-        "inference_hits": 0,
-        "unknown_count": 0,
-    }
 
     for person in candidates:
         linkedin = person.get("linkedin", "")
@@ -169,90 +149,49 @@ def find_relevant_contacts(
             "email_reference": None,
         }
 
-        dedup_rank = len(contacts) + 1
-        first, last = _name_parts(name)
-        should_try_apollo = apollo_enabled and dedup_rank <= APOLLO_CONTACT_CAP and bool(first and last)
-        if should_try_apollo:
-            stats["apollo_attempted"] += 1
-            try:
-                apollo_payload = apollo_enrich_person(first, last, domain)
-            except Exception as exc:
-                apollo_payload = {}
-                if progress:
-                    progress(f"Apollo enrich failed for {name or '(unknown)'}: {exc}")
-
-            apollo_email = apollo_extract_email(apollo_payload)
-            if apollo_email:
-                contact["email"] = apollo_email
+        matched = hunter_by_name.get(_normalize_name(name), [])
+        if matched:
+            # Prefer highest confidence score if available.
+            matched_sorted = sorted(
+                matched,
+                key=lambda r: (r.get("confidence") is not None, r.get("confidence") or 0),
+                reverse=True,
+            )
+            picked = matched_sorted[0]
+            if picked.get("value"):
+                contact["email"] = picked["value"]
                 contact["email_confidence"] = "high"
                 contact["email_reference"] = {
-                    "source": "apollo_exact",
-                    "reference_email": apollo_email,
-                    "pattern": apollo_status(apollo_payload),
+                    "source": "hunter_exact",
+                    "reference_email": picked.get("value", ""),
+                    "pattern": _pattern_for_record(picked),
                 }
-                stats["apollo_hits"] += 1
 
         if not contact["email"]:
-            stats["hunter_fallback_attempted"] += 1
-            matched = hunter_by_name.get(_normalize_name(name), [])
-            if matched:
-                # Prefer highest confidence score if available.
-                matched_sorted = sorted(
-                    matched,
-                    key=lambda r: (r.get("confidence") is not None, r.get("confidence") or 0),
-                    reverse=True,
-                )
-                picked = matched_sorted[0]
-                if picked.get("value"):
-                    contact["email"] = picked["value"]
-                    contact["email_confidence"] = "high"
-                    contact["email_reference"] = {
-                        "source": "hunter_exact",
-                        "reference_email": picked.get("value", ""),
-                        "pattern": _pattern_for_record(picked),
-                    }
-                    stats["hunter_fallback_hits"] += 1
-
-            if not contact["email"]:
-                generated = _build_email_from_pattern(first, last, domain, dominant_pattern or "")
-                if generated:
-                    contact["email"] = generated
+            first, last = _name_parts(name)
+            generated = _build_email_from_pattern(first, last, domain, dominant_pattern or "")
+            if generated:
+                contact["email"] = generated
+                contact["email_confidence"] = "inferred"
+                contact["email_reference"] = {
+                    "source": "hunter_pattern",
+                    "reference_email": (pattern_reference or {}).get("value", ""),
+                    "pattern": dominant_pattern,
+                }
+            else:
+                inferred = infer_email(name, domain)
+                if inferred:
+                    contact["email"] = inferred[0]
                     contact["email_confidence"] = "inferred"
                     contact["email_reference"] = {
-                        "source": "hunter_pattern",
-                        "reference_email": (pattern_reference or {}).get("value", ""),
-                        "pattern": dominant_pattern,
+                        "source": "pattern_fallback",
+                        "reference_email": "",
+                        "pattern": "unknown",
                     }
-                    stats["hunter_fallback_hits"] += 1
-                else:
-                    inferred = infer_email(name, domain)
-                    if inferred:
-                        contact["email"] = inferred[0]
-                        contact["email_confidence"] = "inferred"
-                        contact["email_reference"] = {
-                            "source": "pattern_fallback",
-                            "reference_email": "",
-                            "pattern": "unknown",
-                        }
-                        stats["inference_hits"] += 1
-
-        if not contact["email"]:
-            stats["unknown_count"] += 1
 
         contacts.append(contact)
 
     if progress:
-        progress(
-            f"Apollo stats: attempted={stats['apollo_attempted']}, hits={stats['apollo_hits']}"
-        )
-        progress(
-            "Hunter fallback stats: "
-            f"attempted={stats['hunter_fallback_attempted']}, "
-            f"hits={stats['hunter_fallback_hits']}"
-        )
-        progress(
-            f"Inference stats: inferred={stats['inference_hits']}, unknown={stats['unknown_count']}"
-        )
         progress(f"Built {len(contacts)} contact records")
     return contacts
 

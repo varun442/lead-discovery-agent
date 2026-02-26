@@ -71,19 +71,9 @@ def test_find_relevant_contacts_priority_and_dedup(monkeypatch: pytest.MonkeyPat
         },
     ]
 
-    monkeypatch.setenv("APOLLO_API_KEY", "apollo-key")
     monkeypatch.setattr(agent, "find_linkedin_people", lambda *args, **kwargs: candidates)
     monkeypatch.setattr(agent, "hunter_domain_search", lambda *args, **kwargs: hunter)
     monkeypatch.setattr(agent, "infer_email", lambda name, domain: [])  # noqa: ARG005
-    monkeypatch.setattr(
-        agent,
-        "apollo_enrich_person",
-        lambda first, last, domain: {"person": {"email": "alice.apollo@acme.com", "email_status": "verified"}}
-        if first == "alice"
-        else {},
-    )
-    monkeypatch.setattr(agent, "apollo_extract_email", lambda payload: payload.get("person", {}).get("email", ""))
-    monkeypatch.setattr(agent, "apollo_status", lambda payload: payload.get("person", {}).get("email_status", "apollo"))
 
     contacts = agent.find_relevant_contacts("Acme", "acme.com")
     assert len(contacts) == 3
@@ -92,9 +82,9 @@ def test_find_relevant_contacts_priority_and_dedup(monkeypatch: pytest.MonkeyPat
     bob = next(c for c in contacts if c["linkedin"].endswith("/bob"))
     unknown = next(c for c in contacts if c["linkedin"].endswith("/unknown"))
 
-    assert alice["email"] == "alice.apollo@acme.com"
+    assert alice["email"] == "alice.smith@acme.com"
     assert alice["email_confidence"] == "high"
-    assert alice["email_reference"]["source"] == "apollo_exact"
+    assert alice["email_reference"]["source"] == "hunter_exact"
 
     assert bob["email"] == "bob.jones@acme.com"
     assert bob["email_confidence"] == "inferred"
@@ -102,63 +92,6 @@ def test_find_relevant_contacts_priority_and_dedup(monkeypatch: pytest.MonkeyPat
 
     assert unknown["email"] == ""
     assert unknown["email_confidence"] == "unknown"
-
-
-def test_find_relevant_contacts_skips_apollo_when_key_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    candidates = [
-        {"name": "Alice Smith", "title": "Software Engineer", "linkedin": "https://linkedin.com/in/alice"},
-    ]
-    hunter = [
-        {
-            "first_name": "Alice",
-            "last_name": "Smith",
-            "value": "alice.smith@acme.com",
-            "confidence": 95,
-        }
-    ]
-
-    monkeypatch.delenv("APOLLO_API_KEY", raising=False)
-    monkeypatch.setattr(agent, "find_linkedin_people", lambda *args, **kwargs: candidates)
-    monkeypatch.setattr(agent, "hunter_domain_search", lambda *args, **kwargs: hunter)
-    monkeypatch.setattr(agent, "infer_email", lambda name, domain: [])  # noqa: ARG005
-
-    def should_not_run(*args, **kwargs):  # noqa: ANN002, ANN003
-        raise AssertionError("Apollo should not be called when APOLLO_API_KEY is missing")
-
-    monkeypatch.setattr(agent, "apollo_enrich_person", should_not_run)
-
-    contacts = agent.find_relevant_contacts("Acme", "acme.com")
-    assert len(contacts) == 1
-    assert contacts[0]["email"] == "alice.smith@acme.com"
-    assert contacts[0]["email_reference"]["source"] == "hunter_exact"
-
-
-def test_find_relevant_contacts_apollo_cap(monkeypatch: pytest.MonkeyPatch) -> None:
-    candidates = [
-        {
-            "name": f"Person{i} Last{i}",
-            "title": "Software Engineer",
-            "linkedin": f"https://linkedin.com/in/person{i}",
-        }
-        for i in range(45)
-    ]
-    calls = {"count": 0}
-
-    def fake_apollo(first: str, last: str, domain: str) -> dict:  # noqa: ARG001
-        calls["count"] += 1
-        return {}
-
-    monkeypatch.setenv("APOLLO_API_KEY", "apollo-key")
-    monkeypatch.setattr(agent, "find_linkedin_people", lambda *args, **kwargs: candidates)
-    monkeypatch.setattr(agent, "hunter_domain_search", lambda *args, **kwargs: [])
-    monkeypatch.setattr(agent, "infer_email", lambda name, domain: [])
-    monkeypatch.setattr(agent, "apollo_enrich_person", fake_apollo)
-    monkeypatch.setattr(agent, "apollo_extract_email", lambda payload: "")
-    monkeypatch.setattr(agent, "apollo_status", lambda payload: "apollo")
-
-    contacts = agent.find_relevant_contacts("Acme", "acme.com")
-    assert len(contacts) == 45
-    assert calls["count"] == agent.APOLLO_CONTACT_CAP
 
 
 def test_build_contact_records_warning_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:

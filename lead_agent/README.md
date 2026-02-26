@@ -5,9 +5,8 @@ Python backend that finds engineering/hiring contacts for a company and serves b
 ## What It Does
 - Extracts root company domain from website URL.
 - Discovers relevant LinkedIn profiles using SerpAPI (keyword + company matching).
-- Uses Apollo per-contact enrichment as primary (top 40 deduped candidates).
-- Falls back to Hunter domain emails when Apollo returns no email.
-- Uses dominant Hunter pattern and then local inference for remaining misses.
+- Looks up Hunter domain emails.
+- Uses dominant Hunter pattern to infer missing emails.
 - Returns structured JSON with confidence labels and email references.
 
 ## Tech
@@ -35,7 +34,6 @@ cp .env.example .env
 Configure `/Users/varunsavai/Documents/New project/lead_agent/.env`:
 ```env
 SERPAPI_KEY=your_serpapi_key
-APOLLO_API_KEY=your_apollo_api_key
 HUNTER_API_KEY=your_hunter_api_key
 FRONTEND_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
@@ -97,9 +95,9 @@ Example POST body:
       "email": "jane.doe@stripe.com",
       "email_confidence": "high | inferred | unknown",
       "email_reference": {
-        "source": "apollo_exact | hunter_exact | hunter_pattern | pattern_fallback",
+        "source": "hunter_exact | hunter_pattern | pattern_fallback",
         "reference_email": "",
-        "pattern": "apollo_status | first.last | flast | first | unknown"
+        "pattern": "first.last | flast | first | unknown"
       }
     }
   ],
@@ -109,9 +107,7 @@ Example POST body:
 ```
 
 ## Notes
-- Resolution order is: `Apollo -> Hunter -> pattern inference`.
-- Apollo is attempted for top 40 deduped contacts per run to control cost/latency.
-- `email_confidence="high"` means direct Apollo/Hunter match.
+- `email_confidence="high"` means direct Hunter match.
 - `email_confidence="inferred"` means pattern-based inference.
 - If SerpAPI/Hunter fails, API returns partial structured output with `error`/`warning`.
 
