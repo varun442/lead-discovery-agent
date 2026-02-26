@@ -73,6 +73,8 @@ def test_find_relevant_contacts_priority_and_dedup(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(agent, "find_linkedin_people", lambda *args, **kwargs: candidates)
     monkeypatch.setattr(agent, "hunter_domain_search", lambda *args, **kwargs: hunter)
+    # Email Finder returns nothing so pattern inference is exercised for Bob.
+    monkeypatch.setattr(agent, "hunter_email_finder", lambda *args, **kwargs: {})
     monkeypatch.setattr(agent, "infer_email", lambda name, domain: [])  # noqa: ARG005
 
     contacts = agent.find_relevant_contacts("Acme", "acme.com")
@@ -92,6 +94,36 @@ def test_find_relevant_contacts_priority_and_dedup(monkeypatch: pytest.MonkeyPat
 
     assert unknown["email"] == ""
     assert unknown["email_confidence"] == "unknown"
+
+
+def test_find_relevant_contacts_uses_hunter_finder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hunter Email Finder is used when domain-search has no name match."""
+    candidates = [
+        {"name": "Carol White", "title": "Engineering Manager", "linkedin": "https://linkedin.com/in/carol"},
+    ]
+    # Domain-search returns records for a different person — no name match for Carol.
+    hunter = [
+        {"first_name": "Other", "last_name": "Person", "value": "other.person@acme.com", "confidence": 70},
+    ]
+
+    monkeypatch.setattr(agent, "find_linkedin_people", lambda *args, **kwargs: candidates)
+    monkeypatch.setattr(agent, "hunter_domain_search", lambda *args, **kwargs: hunter)
+    monkeypatch.setattr(
+        agent,
+        "hunter_email_finder",
+        lambda first, last, domain, **kwargs: {"email": "carol.white@acme.com", "score": 91}
+        if first == "carol"
+        else {},
+    )
+    monkeypatch.setattr(agent, "infer_email", lambda name, domain: [])  # noqa: ARG005
+
+    contacts = agent.find_relevant_contacts("Acme", "acme.com")
+    assert len(contacts) == 1
+    carol = contacts[0]
+    assert carol["email"] == "carol.white@acme.com"
+    assert carol["email_confidence"] == "high"
+    assert carol["email_reference"]["source"] == "hunter_finder"
+    assert carol["email_reference"]["score"] == 91
 
 
 def test_build_contact_records_warning_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,6 +7,7 @@ import requests
 
 SERPAPI_URL = "https://serpapi.com/search"
 HUNTER_DOMAIN_SEARCH_URL = "https://api.hunter.io/v2/domain-search"
+HUNTER_EMAIL_FINDER_URL = "https://api.hunter.io/v2/email-finder"
 
 
 TITLE_KEYWORDS = [
@@ -314,6 +315,39 @@ def hunter_domain_search(domain: str, progress: ProgressFn = None) -> list[dict]
         return emails
     except requests.RequestException as exc:
         raise RuntimeError(f"Hunter domain search failed: {exc}") from exc
+
+
+def hunter_email_finder(first_name: str, last_name: str, domain: str, progress: ProgressFn = None) -> dict:
+    """Look up a specific person's work email via Hunter Email Finder.
+
+    Returns the Hunter ``data`` dict which includes ``email`` and ``score``
+    when a match is found, or an empty dict when nothing is found.
+    """
+    api_key = os.getenv("HUNTER_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Missing HUNTER_API_KEY")
+
+    if not first_name or not last_name or not domain:
+        return {}
+
+    try:
+        if progress:
+            progress(f"Hunter email-finder lookup for {first_name} {last_name} at {domain}")
+        response = requests.get(
+            HUNTER_EMAIL_FINDER_URL,
+            params={
+                "domain": domain,
+                "first_name": first_name,
+                "last_name": last_name,
+                "api_key": api_key,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        data = response.json().get("data", {}) or {}
+        return data if isinstance(data, dict) else {}
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Hunter email-finder failed: {exc}") from exc
 
 
 def infer_email(name: str, domain: str) -> list[str]:

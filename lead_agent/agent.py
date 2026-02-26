@@ -9,6 +9,7 @@ from utils import (
     find_linkedin_people,
     get_company_metadata,
     hunter_domain_search,
+    hunter_email_finder,
     infer_email,
 )
 
@@ -149,6 +150,9 @@ def find_relevant_contacts(
             "email_reference": None,
         }
 
+        first, last = _name_parts(name)
+
+        # Step 1: exact name match from Hunter domain-search results.
         matched = hunter_by_name.get(_normalize_name(name), [])
         if matched:
             # Prefer highest confidence score if available.
@@ -167,8 +171,25 @@ def find_relevant_contacts(
                     "pattern": _pattern_for_record(picked),
                 }
 
+        # Step 2: Hunter Email Finder — per-person lookup using first/last name.
+        if not contact["email"] and first and last:
+            try:
+                finder_data = hunter_email_finder(first, last, domain, progress=progress)
+                finder_email = (finder_data.get("email") or "").strip().lower()
+                if finder_email:
+                    contact["email"] = finder_email
+                    contact["email_confidence"] = "high"
+                    contact["email_reference"] = {
+                        "source": "hunter_finder",
+                        "reference_email": finder_email,
+                        "pattern": None,
+                        "score": finder_data.get("score"),
+                    }
+            except Exception:
+                pass  # fall through to pattern inference
+
+        # Step 3: apply dominant pattern derived from Hunter domain-search.
         if not contact["email"]:
-            first, last = _name_parts(name)
             generated = _build_email_from_pattern(first, last, domain, dominant_pattern or "")
             if generated:
                 contact["email"] = generated
@@ -178,16 +199,18 @@ def find_relevant_contacts(
                     "reference_email": (pattern_reference or {}).get("value", ""),
                     "pattern": dominant_pattern,
                 }
-            else:
-                inferred = infer_email(name, domain)
-                if inferred:
-                    contact["email"] = inferred[0]
-                    contact["email_confidence"] = "inferred"
-                    contact["email_reference"] = {
-                        "source": "pattern_fallback",
-                        "reference_email": "",
-                        "pattern": "unknown",
-                    }
+
+        # Step 4: local blind-guess fallback (least reliable).
+        if not contact["email"]:
+            inferred = infer_email(name, domain)
+            if inferred:
+                contact["email"] = inferred[0]
+                contact["email_confidence"] = "inferred"
+                contact["email_reference"] = {
+                    "source": "pattern_fallback",
+                    "reference_email": "",
+                    "pattern": "unknown",
+                }
 
         contacts.append(contact)
 
