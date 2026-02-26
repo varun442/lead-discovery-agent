@@ -120,6 +120,43 @@ def test_hunter_domain_search_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert emails == [{"value": "a@stripe.com"}]
 
 
+def test_apollo_enrich_person_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("APOLLO_API_KEY", raising=False)
+    payload = utils.apollo_enrich_person("Alice", "Smith", "acme.com")
+    assert payload == {}
+
+
+def test_apollo_enrich_person_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APOLLO_API_KEY", "apollo-key")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"person": {"email": "alice@acme.com", "email_status": "verified"}}
+
+    def fake_post(*args, **kwargs):  # noqa: ANN002, ANN003
+        assert kwargs["headers"]["x-api-key"] == "apollo-key"
+        assert kwargs["json"]["first_name"] == "Alice"
+        assert kwargs["json"]["last_name"] == "Smith"
+        assert kwargs["json"]["organization_domains"] == ["acme.com"]
+        return FakeResponse()
+
+    monkeypatch.setattr(utils.requests, "post", fake_post)
+    payload = utils.apollo_enrich_person("Alice", "Smith", "acme.com")
+    assert payload["person"]["email"] == "alice@acme.com"
+
+
+def test_apollo_extract_email_and_status() -> None:
+    payload = {"person": {"work_email": "alice@acme.com", "email_status": "verified"}}
+    assert utils.apollo_extract_email(payload) == "alice@acme.com"
+    assert utils.apollo_status(payload) == "verified"
+
+    assert utils.apollo_extract_email({}) == ""
+    assert utils.apollo_status({}) == "apollo"
+
+
 def test_get_company_metadata_from_knowledge_graph(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_search(_query: str) -> dict:
         return {

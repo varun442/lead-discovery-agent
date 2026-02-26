@@ -337,6 +337,7 @@ export async function POST(request: NextRequest) {
     contactTitle: contact.title || "",
     companyName: job.company || payload.company || "Company",
     jobRole: job.title || "role",
+    jobUrl: job.source_url || "",
     openingLine: pickOpeningLine(`${contact.email}|${job.title || ""}|${job.company || payload.company || ""}`)
   });
 
